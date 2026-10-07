@@ -3,13 +3,28 @@
 import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { ChevronRight, Plus } from "lucide-react";
 import { DashboardShell } from "../../components/dashboard/Shell";
-import { ErrorNote } from "../../components/config/ui";
+import { Button } from "../../components/ui/button";
+import { Input } from "../../components/ui/input";
+import { Field } from "../../components/ui/field";
+import { Badge, StatusDot } from "../../components/ui/badge";
+import { EmptyState } from "../../components/ui/empty-state";
+import { SkeletonList } from "../../components/ui/skeleton";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "../../components/ui/dialog";
 import { createBot, listBots, type Bot } from "../../lib/bots";
 
-function statusClass(status: Bot["status"]) {
-  if (status === "linked" || status === "active") return "bg-primary/15 text-primary";
-  return "bg-white/8 text-muted-foreground";
+function botStatus(bot: Bot): "ok" | "warn" | "muted" {
+  if (bot.linkedNumber || bot.status === "linked" || bot.status === "active") return "ok";
+  return "muted";
 }
 
 export default function DashboardPage() {
@@ -19,6 +34,7 @@ export default function DashboardPage() {
   const [error, setError] = useState("");
   const [name, setName] = useState("");
   const [creating, setCreating] = useState(false);
+  const [open, setOpen] = useState(false);
 
   async function load() {
     setError("");
@@ -41,6 +57,8 @@ export default function DashboardPage() {
     setCreating(true);
     try {
       const bot = await createBot(name.trim());
+      setOpen(false);
+      setName("");
       router.push(`/dashboard/bots/${bot.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not create bot");
@@ -48,75 +66,101 @@ export default function DashboardPage() {
     }
   }
 
-  const linked = bots.filter((bot) => bot.linkedNumber || bot.status !== "inactive").length;
+  const linked = bots.filter(
+    (bot) => bot.linkedNumber || bot.status === "linked" || bot.status === "active",
+  ).length;
 
   return (
-    <DashboardShell title="Bots">
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="rounded-2xl border border-white/10 bg-card p-5">
-          <p className="text-sm text-muted-foreground">Total</p>
-          <p className="mt-1 text-2xl font-semibold text-white">{loading ? "—" : bots.length}</p>
-        </div>
-        <div className="rounded-2xl border border-white/10 bg-card p-5">
-          <p className="text-sm text-muted-foreground">Linked</p>
-          <p className="mt-1 text-2xl font-semibold text-white">{loading ? "—" : linked}</p>
-        </div>
-      </div>
-
-      <form
-        onSubmit={onCreate}
-        className="mt-6 rounded-2xl border border-white/10 bg-card p-5 sm:p-6"
-      >
-        <h2 className="text-base font-semibold text-white">New bot</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Creates an empty bot. Add packs after it is created.
-        </p>
-        <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-          <input
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            required
-            maxLength={20}
-            placeholder="Bot name"
-            className="h-11 flex-1 rounded-lg border border-white/10 bg-black/20 px-3 text-sm text-white outline-none placeholder:text-muted-foreground focus:border-primary/60 focus:ring-2 focus:ring-primary/20"
-          />
-          <button
-            type="submit"
-            disabled={creating}
-            className="h-11 rounded-lg bg-primary px-4 text-sm font-semibold text-white transition-all hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {creating ? "Creating..." : "Create bot"}
-          </button>
-        </div>
-      </form>
-
-      {error ? <div className="mt-4"><ErrorNote>{error}</ErrorNote></div> : null}
-
-      <div className="mt-6 space-y-3">
-        {loading ? <p className="text-sm text-muted-foreground">Loading bots...</p> : null}
-        {!loading && bots.length === 0 ? (
-          <p className="rounded-2xl border border-dashed border-white/10 px-5 py-8 text-sm text-muted-foreground">
-            No bots yet.
-          </p>
-        ) : null}
-        {bots.map((bot) => (
-          <Link
-            key={bot.id}
-            href={`/dashboard/bots/${bot.id}`}
-            className="flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-card px-5 py-4 transition-colors hover:border-white/20"
-          >
-            <div>
-              <p className="font-medium text-white">{bot.name}</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {bot.linkedNumber ?? "No number linked"}
-              </p>
-            </div>
-            <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${statusClass(bot.status)}`}>
-              {bot.status}
-            </span>
-          </Link>
-        ))}
-      </div>
+    <DashboardShell
+      title="Bots"
+      description={
+        loading
+          ? "Loading…"
+          : `${bots.length} bot${bots.length === 1 ? "" : "s"} · ${linked} linked`
+      }
+      actions={
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogTrigger asChild>
+            <Button>
+              <Plus className="size-4" />
+              New bot
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <form onSubmit={onCreate}>
+              <DialogHeader>
+                <DialogTitle>New bot</DialogTitle>
+                <DialogDescription>
+                  Creates an empty bot. Add packs after it is created.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="mt-4">
+                <Field label="Name">
+                  <Input
+                    value={name}
+                    onChange={(event) => setName(event.target.value)}
+                    required
+                    maxLength={20}
+                    placeholder="Bot name"
+                    autoFocus
+                  />
+                </Field>
+                {error ? (
+                  <p className="mt-2 text-sm text-destructive" role="alert">
+                    {error}
+                  </p>
+                ) : null}
+              </div>
+              <DialogFooter className="mt-6">
+                <Button type="button" variant="secondary" onClick={() => setOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" loading={creating}>
+                  Create
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      }
+    >
+      {loading ? (
+        <SkeletonList count={4} />
+      ) : bots.length === 0 ? (
+        <EmptyState
+          title="No bots yet"
+          description="Create a bot, link WhatsApp, then install packs from Market or My packs."
+          action={
+            <Button onClick={() => setOpen(true)}>
+              <Plus className="size-4" />
+              New bot
+            </Button>
+          }
+        />
+      ) : (
+        <ul className="divide-y divide-border border-y border-border">
+          {bots.map((bot) => (
+            <li key={bot.id}>
+              <Link
+                href={`/dashboard/bots/${bot.id}`}
+                className="flex items-center gap-3 px-1 py-3.5 transition-colors duration-150 hover:bg-[var(--color-hover)]"
+              >
+                <StatusDot status={botStatus(bot)} />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-foreground">{bot.name}</p>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {bot.linkedNumber ?? "Not linked"}
+                  </p>
+                </div>
+                <Badge variant={botStatus(bot) === "ok" ? "success" : "default"}>
+                  {bot.status}
+                </Badge>
+                <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
     </DashboardShell>
   );
 }

@@ -1,17 +1,20 @@
 @import "tailwindcss";
 
-@theme {
-  /* ─────────────────────────────────────────────
-     Colors
-  ───────────────────────────────────────────── */
+/* ─────────────────────────────────────────────
+   Design tokens
+   Surfaces: page → container (objects) → inset (inputs)
+   One border, one hover fill, one inset. No nested cards.
+   Type: 12 / 14 / 16 / 18 / 24. Radius: 6 control / 12 surface.
+───────────────────────────────────────────── */
 
+@theme {
   --color-background: #08090d;
   --color-foreground: #f4f4f5;
 
   --color-card: #0f1117;
   --color-card-foreground: #f4f4f5;
 
-  --color-popover: #0f1117;
+  --color-popover: #12141c;
   --color-popover-foreground: #f4f4f5;
 
   --color-primary: #8b5cf6;
@@ -29,41 +32,32 @@
   --color-destructive: #ef4444;
   --color-destructive-foreground: #ffffff;
 
+  --color-success: #22c55e;
+  --color-success-foreground: #052e16;
+  --color-warning: #f59e0b;
+  --color-warning-foreground: #422006;
+
   --color-border: #20232d;
   --color-input: #20232d;
   --color-ring: #8b5cf6;
 
-  /* ─────────────────────────────────────────────
-     Radius
-  ───────────────────────────────────────────── */
+  /* Inset fill for inputs / code (not a second card surface) */
+  --color-inset: #0a0c12;
+  --color-hover: rgba(255, 255, 255, 0.04);
 
-  --radius-sm: 0.375rem;
+  --radius-sm: 0.375rem; /* 6px controls */
   --radius-md: 0.5rem;
-  --radius-lg: 0.75rem;
+  --radius-lg: 0.75rem; /* 12px surfaces */
   --radius-xl: 1rem;
   --radius-2xl: 1.25rem;
-
-  /* ─────────────────────────────────────────────
-     Shadows
-  ───────────────────────────────────────────── */
 
   --shadow-gxu: 0 0 30px rgba(139, 92, 246, 0.12);
   --shadow-gxu-lg:
     0 0 30px rgba(139, 92, 246, 0.12), 0 0 80px rgba(99, 102, 241, 0.06);
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 }
-
-/* ─────────────────────────────────────────────
-   Root
-───────────────────────────────────────────── */
-
-:root {
-  --background: #08090d;
-  --foreground: #f4f4f5;
-}
-
-/* ─────────────────────────────────────────────
-   Base
-───────────────────────────────────────────── */
 
 @layer base {
   * {
@@ -78,9 +72,9 @@
     margin: 0;
     background: var(--color-background);
     color: var(--color-foreground);
-
-    font-family: Arial, Helvetica, sans-serif;
-
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.5;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
@@ -108,109 +102,56 @@
   }
 }
 
-/* ─────────────────────────────────────────────
-   Scrollbar
-───────────────────────────────────────────── */
-
+/* Scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
-
 ::-webkit-scrollbar-track {
   background: var(--color-background);
 }
-
 ::-webkit-scrollbar-thumb {
-  background: #292c36;
+  background: var(--color-border);
   border-radius: 999px;
 }
-
 ::-webkit-scrollbar-thumb:hover {
   background: #3a3d49;
 }
 
-/* ─────────────────────────────────────────────
-   GXUbots Gradient
-───────────────────────────────────────────── */
-
+/* Marketing helpers (landing only) */
 .gxu-gradient {
   background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 50%, #3b82f6 100%);
 }
-
 .gxu-gradient-text {
   background: linear-gradient(135deg, #c4b5fd 0%, #818cf8 50%, #60a5fa 100%);
-
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
 }
-
-/* ─────────────────────────────────────────────
-   Glow
-───────────────────────────────────────────── */
-
 .gxu-glow {
   box-shadow:
     0 0 30px rgba(139, 92, 246, 0.12),
     0 0 80px rgba(99, 102, 241, 0.06);
 }
-
 .gxu-glow-sm {
   box-shadow: 0 0 20px rgba(139, 92, 246, 0.1);
 }
-
-/* ─────────────────────────────────────────────
-   Grid Background
-───────────────────────────────────────────── */
-
 .gxu-grid {
   background-image:
     linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
-
   background-size: 32px 32px;
 }
-
-/* ─────────────────────────────────────────────
-   Subtle Radial Background
-───────────────────────────────────────────── */
-
 .gxu-radial {
   background:
-    radial-gradient(
-      circle at 50% 0%,
-      rgba(139, 92, 246, 0.12),
-      transparent 45%
-    ),
+    radial-gradient(circle at 50% 0%, rgba(139, 92, 246, 0.12), transparent 45%),
     var(--color-background);
 }
-
-/* ─────────────────────────────────────────────
-   Card
-───────────────────────────────────────────── */
-
 .gxu-card {
   background: var(--color-card);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
 }
-
-/* ─────────────────────────────────────────────
-   Glass
-───────────────────────────────────────────── */
-
-.gxu-glass {
-  background: rgba(15, 17, 23, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-}
-
-/* ─────────────────────────────────────────────
-   Smooth Transitions
-───────────────────────────────────────────── */
-
 .gxu-transition {
   transition:
     background-color 150ms ease,

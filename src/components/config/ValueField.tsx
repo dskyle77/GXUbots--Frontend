@@ -67,12 +67,12 @@ export function ValueField({
 
   return (
     <div className="space-y-2">
-      <div className="flex rounded-md border border-white/10 p-0.5">
+      <div className="flex rounded-md border border-border p-0.5">
         <button
           type="button"
           onClick={() => setKind("value")}
           className={`h-7 flex-1 rounded px-2 text-xs font-medium ${
-            kind === "value" ? "bg-white/10 text-white" : "text-muted-foreground"
+            kind === "value" ? "bg-white/10 text-foreground" : "text-muted-foreground"
           }`}
         >
           Value
@@ -81,7 +81,7 @@ export function ValueField({
           type="button"
           onClick={() => setKind("path")}
           className={`h-7 flex-1 rounded px-2 text-xs font-medium ${
-            kind === "path" ? "bg-white/10 text-white" : "text-muted-foreground"
+            kind === "path" ? "bg-white/10 text-foreground" : "text-muted-foreground"
           }`}
         >
           Path
@@ -101,8 +101,8 @@ export function ValueField({
           onClick={() => setLiteral(literalValue === true ? "false" : "true", "boolean")}
           className={`h-9 w-full rounded-lg border px-3 text-left text-sm ${
             literalValue === true
-              ? "border-primary/40 bg-primary/15 text-white"
-              : "border-white/10 bg-black/20 text-muted-foreground"
+              ? "border-primary/40 bg-primary/15 text-foreground"
+              : "border-border bg-[var(--color-inset)] text-muted-foreground"
           }`}
         >
           {literalValue === true ? "true" : "false"}

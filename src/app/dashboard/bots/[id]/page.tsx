@@ -1,9 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
-import Link from "next/link";
-import { DashboardShell } from "../../../../components/dashboard/Shell";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   deleteBot,
   getBot,
@@ -18,11 +16,41 @@ import {
   type LinkResult,
 } from "../../../../lib/bots";
 import { qrSvg } from "../../../../lib/qr";
+import { DashboardShell } from "../../../../components/dashboard/Shell";
+import { BotConfigEditor } from "../../../../components/config/BotConfigEditor";
+import { Button } from "../../../../components/ui/button";
+import { Input } from "../../../../components/ui/input";
+import { Field } from "../../../../components/ui/field";
+import { Badge, StatusDot } from "../../../../components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../../../components/ui/tabs";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../../../../components/ui/dialog";
+import { toast } from "../../../../components/ui/toast";
+
+function connectionDot(status: BotConnection | null, linked: boolean): "ok" | "warn" | "muted" {
+  if (status?.connection === "open" || linked) return "ok";
+  if (status?.connection === "connecting") return "warn";
+  return "muted";
+}
 
 export default function BotPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
+  const search = useSearchParams();
   const id = params.id;
+
+  const initialTab =
+    search.get("tab") === "packs" || search.get("tab") === "settings"
+      ? (search.get("tab") as "packs" | "settings")
+      : "overview";
+
+  const [tab, setTab] = useState(initialTab);
   const [bot, setBot] = useState<Bot | null>(null);
   const [status, setStatus] = useState<BotConnection | null>(null);
   const [name, setName] = useState("");
@@ -32,14 +60,7 @@ export default function BotPage() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
-
-  async function load() {
-    const [nextBot, nextStatus] = await Promise.all([getBot(id), getBotStatus(id)]);
-    setBot(nextBot);
-    setStatus(nextStatus);
-    setName(nextBot.name);
-    if (nextStatus.connection === "open" || nextStatus.linkedNumber) setLink(null);
-  }
+  const [confirmUnlink, setConfirmUnlink] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -83,6 +104,7 @@ export default function BotPage() {
     try {
       const next = await renameBot(id, name.trim());
       setBot(next);
+      toast.success("Bot renamed");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not rename bot");
     } finally {
@@ -113,6 +135,8 @@ export default function BotPage() {
       setBot(next);
       setLink(null);
       setStatus(await getBotStatus(id));
+      setConfirmUnlink(false);
+      toast.success("WhatsApp unlinked");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not unlink bot");
     } finally {
@@ -136,170 +160,206 @@ export default function BotPage() {
   const linked = Boolean(bot?.linkedNumber);
 
   return (
-    <DashboardShell title={bot?.name ?? "Bot"}>
+    <DashboardShell
+      title={bot?.name ?? "Bot"}
+      description={
+        bot
+          ? bot.linkedNumber
+            ? `Linked · ${bot.linkedNumber}`
+            : "Not linked to WhatsApp"
+          : undefined
+      }
+      actions={
+        bot ? (
+          <div className="flex items-center gap-2">
+            <StatusDot status={connectionDot(status, linked)} />
+            <Badge variant={linked ? "success" : "default"}>{bot.status}</Badge>
+            {status?.runtimeLoaded ? <Badge variant="primary">Runtime</Badge> : null}
+          </div>
+        ) : null
+      }
+    >
       {error ? (
-        <p role="alert" className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+        <p
+          role="alert"
+          className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
           {error}
         </p>
       ) : null}
 
       {!bot ? (
-        <p className="text-sm text-muted-foreground">Loading bot...</p>
+        <p className="text-sm text-muted-foreground">Loading bot…</p>
       ) : (
-        <div className="space-y-4">
-          <section className="rounded-2xl border border-white/10 bg-card p-5 sm:p-6">
-            <div className="flex flex-wrap items-center gap-2 text-xs">
-              <span className="rounded-full bg-white/8 px-2.5 py-1 text-muted-foreground">{bot.status}</span>
-              <span className="rounded-full bg-white/8 px-2.5 py-1 text-muted-foreground">
-                {status?.connection ?? "closed"}
-              </span>
-              {status?.runtimeLoaded ? (
-                <span className="rounded-full bg-primary/15 px-2.5 py-1 text-primary">runtime loaded</span>
-              ) : null}
-            </div>
-            <p className="mt-4 text-sm text-muted-foreground">
-              {bot.linkedNumber ? `Linked number ${bot.linkedNumber}` : "No number linked"}
-            </p>
+        <Tabs
+          value={tab}
+          onValueChange={(value) => {
+            setTab(value as typeof tab);
+            const next =
+              value === "overview"
+                ? `/dashboard/bots/${id}`
+                : `/dashboard/bots/${id}?tab=${value}`;
+            router.replace(next, { scroll: false });
+          }}
+        >
+          <TabsList>
+            <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="packs">Packs</TabsTrigger>
+            <TabsTrigger value="settings">Settings</TabsTrigger>
+          </TabsList>
 
-            <form onSubmit={onRename} className="mt-5 flex flex-col gap-3 sm:flex-row">
-              <input
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                required
-                maxLength={20}
-                className="h-11 flex-1 rounded-lg border border-white/10 bg-black/20 px-3 text-sm text-white outline-none focus:border-primary/60 focus:ring-2 focus:ring-primary/20"
-              />
-              <button
-                type="submit"
-                disabled={busy === "rename" || name.trim() === bot.name}
-                className="h-11 rounded-lg border border-white/10 px-4 text-sm font-semibold text-white transition-colors hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {busy === "rename" ? "Saving..." : "Rename"}
-              </button>
-            </form>
-          </section>
+          <TabsContent value="overview" className="space-y-8">
+            <section>
+              <h2 className="text-sm font-medium text-foreground">WhatsApp</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Connection: {status?.connection ?? "closed"}
+                {status?.runtimeLoaded ? " · runtime loaded" : ""}
+              </p>
 
-          <section className="rounded-2xl border border-white/10 bg-card p-5 sm:p-6">
-            <h2 className="text-base font-semibold text-white">WhatsApp</h2>
-            {linked ? (
-              <div className="mt-4">
-                <p className="text-sm text-muted-foreground">
-                  This bot is linked. Unlink before connecting a different number.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => void onUnlink()}
-                  disabled={busy === "unlink"}
-                  className="mt-4 h-11 rounded-lg border border-white/10 px-4 text-sm font-semibold text-white transition-colors hover:bg-white/5 disabled:opacity-60"
-                >
-                  {busy === "unlink" ? "Unlinking..." : "Unlink number"}
-                </button>
-              </div>
-            ) : (
-              <form onSubmit={onLink} className="mt-4 space-y-4">
-                <div className="flex gap-2">
-                  {(["qr", "pairing-code"] as LinkMethod[]).map((item) => (
-                    <button
-                      key={item}
-                      type="button"
-                      onClick={() => setMethod(item)}
-                      className={`h-10 rounded-lg px-3 text-sm ${
-                        method === item
-                          ? "bg-primary text-white"
-                          : "border border-white/10 text-muted-foreground"
-                      }`}
-                    >
-                      {item === "qr" ? "QR code" : "Pairing code"}
-                    </button>
-                  ))}
+              {linked ? (
+                <div className="mt-4 flex flex-wrap items-center gap-3">
+                  <p className="text-sm text-muted-foreground">
+                    Linked as <span className="text-foreground">{bot.linkedNumber}</span>
+                  </p>
+                  <Button variant="secondary" onClick={() => setConfirmUnlink(true)}>
+                    Unlink
+                  </Button>
                 </div>
-                {method === "pairing-code" ? (
-                  <input
-                    value={phone}
-                    onChange={(event) => setPhone(event.target.value)}
-                    required
-                    inputMode="numeric"
-                    placeholder="2348012345678"
-                    className="h-11 w-full rounded-lg border border-white/10 bg-black/20 px-3 text-sm text-white outline-none placeholder:text-muted-foreground focus:border-primary/60 focus:ring-2 focus:ring-primary/20"
+              ) : (
+                <form onSubmit={onLink} className="mt-4 max-w-md space-y-4">
+                  <div className="flex gap-2">
+                    {(["qr", "pairing-code"] as LinkMethod[]).map((item) => (
+                      <Button
+                        key={item}
+                        type="button"
+                        size="sm"
+                        variant={method === item ? "primary" : "secondary"}
+                        onClick={() => setMethod(item)}
+                      >
+                        {item === "qr" ? "QR code" : "Pairing code"}
+                      </Button>
+                    ))}
+                  </div>
+                  {method === "pairing-code" ? (
+                    <Field label="Phone number" hint="Country code + number, digits only">
+                      <Input
+                        value={phone}
+                        onChange={(event) => setPhone(event.target.value)}
+                        required
+                        inputMode="numeric"
+                        placeholder="2348012345678"
+                      />
+                    </Field>
+                  ) : null}
+                  <Button type="submit" loading={busy === "link"}>
+                    Link WhatsApp
+                  </Button>
+                </form>
+              )}
+
+              {link?.pairingCode ? (
+                <p className="mt-6 text-center font-mono text-3xl font-semibold tracking-[0.3em] text-foreground">
+                  {link.pairingCode}
+                </p>
+              ) : null}
+              {qr ? (
+                <div className="mt-6 flex flex-col items-start gap-3 sm:flex-row sm:items-center">
+                  <div
+                    className="w-52 shrink-0 overflow-hidden rounded-lg bg-white p-3"
+                    dangerouslySetInnerHTML={{ __html: qr }}
                   />
-                ) : null}
-                <button
+                  <p className="max-w-xs text-sm text-muted-foreground">
+                    Open WhatsApp → Linked devices → Link a device, then scan this code. If it
+                    expires, start linking again.
+                  </p>
+                </div>
+              ) : null}
+              {link && !qr && !link.pairingCode ? (
+                <p className="mt-3 text-sm text-muted-foreground">Waiting for the phone to connect…</p>
+              ) : null}
+            </section>
+          </TabsContent>
+
+          <TabsContent value="packs">
+            <BotConfigEditor botId={id} />
+          </TabsContent>
+
+          <TabsContent value="settings" className="space-y-10">
+            <section className="max-w-md">
+              <h2 className="text-sm font-medium text-foreground">Name</h2>
+              <form onSubmit={onRename} className="mt-3 flex flex-col gap-3 sm:flex-row">
+                <Input
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                  required
+                  maxLength={20}
+                  className="flex-1"
+                />
+                <Button
                   type="submit"
-                  disabled={busy === "link"}
-                  className="h-11 rounded-lg bg-primary px-4 text-sm font-semibold text-white transition-all hover:bg-primary/90 disabled:opacity-60"
+                  variant="secondary"
+                  loading={busy === "rename"}
+                  disabled={name.trim() === bot.name}
                 >
-                  {busy === "link" ? "Starting..." : "Link WhatsApp"}
-                </button>
+                  Save
+                </Button>
               </form>
-            )}
+            </section>
 
-            {link?.pairingCode ? (
-              <p className="mt-5 text-center text-3xl font-semibold tracking-[0.3em] text-white">
-                {link.pairingCode}
+            <section className="max-w-md border-t border-border pt-8">
+              <h2 className="text-sm font-medium text-destructive">Danger zone</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Deleting a bot removes its packs, link, and runtime state. This cannot be undone.
               </p>
-            ) : null}
-            {qr ? (
-              <div
-                className="mx-auto mt-5 w-56 overflow-hidden rounded-xl bg-white p-3"
-                dangerouslySetInnerHTML={{ __html: qr }}
-              />
-            ) : null}
-            {link ? (
-              <p className="mt-3 text-sm text-muted-foreground">
-                Waiting for the phone to connect. If this expires, start linking again.
-              </p>
-            ) : null}
-          </section>
-
-          <section className="rounded-2xl border border-white/10 bg-card p-5 sm:p-6">
-            <h2 className="text-base font-semibold text-white">Config</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Edit commands, events, functions, assets, and variables.
-            </p>
-            <p className="mt-3 text-sm text-muted-foreground">{bot.description || "No description"}</p>
-            <Link
-              href={`/dashboard/bots/${id}/config`}
-              className="mt-4 inline-flex min-h-11 items-center rounded-lg bg-primary px-4 text-sm font-semibold text-white hover:bg-primary/90"
-            >
-              Packs
-            </Link>
-          </section>
-
-          <section className="rounded-2xl border border-destructive/30 bg-card p-5 sm:p-6">
-            <h2 className="text-base font-semibold text-white">Delete bot</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              This removes the bot, its saved state, and the WhatsApp session.
-            </p>
-            {confirmDelete ? (
-              <div className="mt-4 flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => void onDelete()}
-                  disabled={busy === "delete"}
-                  className="h-11 rounded-lg bg-destructive px-4 text-sm font-semibold text-white disabled:opacity-60"
-                >
-                  {busy === "delete" ? "Deleting..." : "Confirm delete"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setConfirmDelete(false)}
-                  className="h-11 rounded-lg border border-white/10 px-4 text-sm text-white"
-                >
-                  Cancel
-                </button>
-              </div>
-            ) : (
-              <button
-                type="button"
+              <Button
+                variant="dangerOutline"
+                className="mt-4"
                 onClick={() => setConfirmDelete(true)}
-                className="mt-4 h-11 rounded-lg border border-destructive/40 px-4 text-sm font-semibold text-destructive"
               >
                 Delete bot
-              </button>
-            )}
-          </section>
-        </div>
+              </Button>
+            </section>
+          </TabsContent>
+        </Tabs>
       )}
+
+      <Dialog open={confirmUnlink} onOpenChange={setConfirmUnlink}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Unlink WhatsApp?</DialogTitle>
+            <DialogDescription>
+              The bot will stop receiving messages until you link a number again.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setConfirmUnlink(false)}>
+              Cancel
+            </Button>
+            <Button variant="danger" loading={busy === "unlink"} onClick={() => void onUnlink()}>
+              Unlink
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete this bot?</DialogTitle>
+            <DialogDescription>
+              Permanently delete {bot?.name}. Installed packs and the WhatsApp session are removed.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setConfirmDelete(false)}>
+              Cancel
+            </Button>
+            <Button variant="danger" loading={busy === "delete"} onClick={() => void onDelete()}>
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardShell>
   );
 }

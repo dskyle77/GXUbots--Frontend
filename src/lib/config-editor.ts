@@ -3,6 +3,8 @@ export type VariableScope = "chat" | "user" | "global" | "session";
 export type AssetType = "json" | "text" | "image" | "file";
 
 /** Mirrors backend Expression; clientId is editor-only and stripped on serialize. */
+export type UnaryOperator = "not" | "negative";
+
 export type EditorExpression =
   | { clientId: string; type: "literal"; value: string | number | boolean | null }
   | { clientId: string; type: "variable"; path: string }
@@ -12,6 +14,12 @@ export type EditorExpression =
       operator: BinaryOperator;
       left: EditorExpression;
       right: EditorExpression;
+    }
+  | {
+      clientId: string;
+      type: "unary";
+      operator: UnaryOperator;
+      operand: EditorExpression;
     }
   | { clientId: string; type: "call"; callee: string; args: EditorExpression[] };
 
@@ -67,6 +75,7 @@ export type EditorAction =
   | { clientId: string; type: "repeat"; count: number; actions: EditorAction[] }
   | { clientId: string; type: "break" }
   | { clientId: string; type: "continue" }
+  | { clientId: string; type: "stop_event" }
   | { clientId: string; type: "reply_message"; text: string }
   | { clientId: string; type: "react_message"; emoji: string }
   | { clientId: string; type: "delete_message" }
@@ -164,6 +173,7 @@ export const actionTypes = [
   "repeat",
   "break",
   "continue",
+  "stop_event",
   "call_function",
   "return",
 ] as const;
@@ -187,6 +197,7 @@ export const actionLabels: Record<(typeof actionTypes)[number], string> = {
   repeat: "Repeat",
   break: "Break",
   continue: "Continue",
+  stop_event: "Stop event",
   call_function: "Call function",
   return: "Return",
 };
@@ -224,7 +235,7 @@ export function binaryExpr(
   };
 }
 
-export function unaryExpr(operator: "not" | "negative" = "not", operand?: EditorExpression): EditorExpression {
+export function unaryExpr(operator: UnaryOperator = "not", operand?: EditorExpression): EditorExpression {
   return { clientId: clientId(), type: "unary", operator, operand: operand ?? variableExpr("") };
 }
 
@@ -301,6 +312,8 @@ export function blankAction(type: EditorAction["type"] = "send_message"): Editor
     case "break":
       return { clientId: id, type };
     case "continue":
+      return { clientId: id, type };
+    case "stop_event":
       return { clientId: id, type };
     case "call_function":
       return { clientId: id, type, functionName: "", args: [] };
@@ -560,6 +573,7 @@ function parseAction(value: unknown): EditorAction | null {
       };
     case "break":
     case "continue":
+    case "stop_event":
       return { clientId: id, type };
     case "call_function":
       return {
@@ -603,10 +617,11 @@ export function parseExpression(value: unknown): EditorExpression {
     };
   }
   if (item.type === "unary") {
+    const op: UnaryOperator = item.operator === "negative" ? "negative" : "not";
     return {
       clientId: clientId(),
       type: "unary",
-      operator: item.operator === "negative" ? "negative" : "not",
+      operator: op,
       operand: parseExpression(item.operand),
     };
   }
@@ -778,6 +793,7 @@ function serializeAction(action: EditorAction): Record<string, unknown> {
       return { type: action.type, count: action.count, actions: action.actions.map(serializeAction) };
     case "break":
     case "continue":
+    case "stop_event":
       return { type: action.type };
     case "call_function":
       return {

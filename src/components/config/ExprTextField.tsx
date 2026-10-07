@@ -200,7 +200,7 @@ export function ExprTextField({
               setMenuOpen(false);
             }
           }}
-          className={`${inputClass} min-w-0 flex-1 font-mono text-[13px] ${
+          className={`${inputClass} min-w-0 flex-1 font-mono text-sm ${
             error ? "border-amber-500/50 focus:border-amber-500/70" : ""
           }`}
         />
@@ -216,11 +216,11 @@ export function ExprTextField({
         <div
           id={listId}
           role="listbox"
-          className="absolute left-0 right-10 z-40 mt-1 max-h-56 overflow-auto rounded-lg border border-white/10 bg-[#14161e] p-1 shadow-gxu"
+          className="absolute left-0 right-10 z-40 mt-1 max-h-56 overflow-auto rounded-lg border border-border bg-popover p-1 shadow-gxu"
         >
           {grouped.map(({ group, items }) => (
             <div key={group} className="mb-1">
-              <p className="px-3 py-1 text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+              <p className="px-3 py-1 text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
                 {groupLabel(group)}
               </p>
               {items.slice(0, 12).map((option) => (
@@ -232,10 +232,10 @@ export function ExprTextField({
                     event.preventDefault();
                     insertPath(option.path);
                   }}
-                  className="flex w-full items-center justify-between gap-3 rounded-md px-3 py-1.5 text-left text-sm text-white/85 hover:bg-white/5"
+                  className="flex w-full items-center justify-between gap-3 rounded-md px-3 py-1.5 text-left text-sm text-foreground/85 hover:bg-[var(--color-hover)]"
                 >
                   <span className="min-w-0">
-                    <span className="block truncate font-mono text-[13px]">{`{{${option.path}}}`}</span>
+                    <span className="block truncate font-mono text-sm">{`{{${option.path}}}`}</span>
                     {option.hint ? (
                       <span className="block truncate text-xs text-muted-foreground">
                         {option.hint}
@@ -249,12 +249,8 @@ export function ExprTextField({
         </div>
       ) : null}
       {error ? (
-        <p className="text-[11px] text-amber-400/95" role="alert">
+        <p className="text-xs text-amber-400/95" role="alert">
           {error}
-        </p>
-      ) : compactHint ? (
-        <p className="text-[10px] text-muted-foreground/80">
-          {"{{path}}"} · &quot;str&quot; · true · 1 · + − == and or not — type {"{{"} for path hints
         </p>
       ) : null}
     </div>

@@ -2,11 +2,14 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { ChevronRight } from "lucide-react";
 import { DashboardShell } from "../../../components/dashboard/Shell";
-import { ErrorNote } from "../../../components/config/ui";
 import { listMarketPacks } from "../../../lib/market";
 import type { PackSummary } from "../../../lib/packs";
 import { useAuth } from "../../../components/AuthProvider";
+import { Badge } from "../../../components/ui/badge";
+import { EmptyState } from "../../../components/ui/empty-state";
+import { SkeletonList } from "../../../components/ui/skeleton";
 
 export default function MarketPage() {
   const { owner } = useAuth();
@@ -17,30 +20,58 @@ export default function MarketPage() {
   useEffect(() => {
     listMarketPacks()
       .then(setPacks)
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : "Could not load the market"))
+      .catch((err: unknown) =>
+        setError(err instanceof Error ? err.message : "Could not load the market"),
+      )
       .finally(() => setLoading(false));
   }, []);
 
   return (
-    <DashboardShell title="Market">
-      <p className="text-sm text-muted-foreground">Published packs. Installing one adds it to a bot you already have.</p>
-      {error ? <div className="mt-4"><ErrorNote>{error}</ErrorNote></div> : null}
-      {loading ? <p className="mt-6 text-sm text-muted-foreground">Loading packs...</p> : null}
-      {!loading && packs.length === 0 ? (
-        <p className="mt-6 rounded-2xl border border-dashed border-white/10 px-5 py-8 text-sm text-muted-foreground">Nothing published yet.</p>
+    <DashboardShell
+      title="Market"
+      description="Published packs. Install one on a bot you already have."
+    >
+      {error ? (
+        <p role="alert" className="mb-4 text-sm text-destructive">
+          {error}
+        </p>
       ) : null}
-      <div className="mt-6 grid gap-3 sm:grid-cols-2">
-        {packs.map((pack) => (
-          <Link key={pack.id} href={`/dashboard/market/${pack.id}`} className="min-h-11 rounded-2xl border border-white/10 bg-card p-5 hover:border-white/20">
-            <div className="flex items-start justify-between gap-3">
-              <h2 className="font-medium text-white">{pack.name}</h2>
-              {pack.ownerId === owner?.id ? <span className="rounded-full bg-primary/15 px-2.5 py-1 text-xs text-primary">Yours</span> : null}
-            </div>
-            <p className="mt-2 text-sm text-muted-foreground">{pack.description || "No description"}</p>
-            <p className="mt-4 text-xs text-muted-foreground">{pack.slug} · {pack.version}</p>
-          </Link>
-        ))}
-      </div>
+
+      {loading ? (
+        <SkeletonList count={4} />
+      ) : packs.length === 0 ? (
+        <EmptyState
+          title="Nothing published yet"
+          description="Publish a pack from My packs to list it here."
+        />
+      ) : (
+        <ul className="grid gap-3 sm:grid-cols-2">
+          {packs.map((pack) => (
+            <li key={pack.id}>
+              <Link
+                href={`/dashboard/market/${pack.id}`}
+                className="flex h-full flex-col rounded-lg border border-border bg-card p-4 transition-colors duration-150 hover:bg-[var(--color-hover)]"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <h2 className="text-sm font-medium text-foreground">{pack.name}</h2>
+                  {pack.ownerId === owner?.id ? (
+                    <Badge variant="primary">Yours</Badge>
+                  ) : null}
+                </div>
+                <p className="mt-2 line-clamp-2 flex-1 text-sm text-muted-foreground">
+                  {pack.description || "No description"}
+                </p>
+                <div className="mt-4 flex items-center justify-between gap-2">
+                  <p className="truncate text-xs text-muted-foreground">
+                    {pack.slug} · {pack.version}
+                  </p>
+                  <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+                </div>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
     </DashboardShell>
   );
 }

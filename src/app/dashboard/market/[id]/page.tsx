@@ -1,12 +1,17 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
 import { DashboardShell } from "../../../../components/dashboard/Shell";
-import { ErrorNote } from "../../../../components/config/ui";
 import { getMarketPack } from "../../../../lib/market";
 import { installPack, type PackSummary } from "../../../../lib/packs";
 import { listBots, type Bot } from "../../../../lib/bots";
+import { Button } from "../../../../components/ui/button";
+import { Field } from "../../../../components/ui/field";
+import { Badge } from "../../../../components/ui/badge";
+import { toast } from "../../../../components/ui/toast";
 
 export default function MarketPackPage() {
   const params = useParams<{ id: string }>();
@@ -24,7 +29,9 @@ export default function MarketPackPage() {
         setBots(nextBots);
         setBotId(nextBots[0]?.id ?? "");
       })
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : "Could not load pack"));
+      .catch((err: unknown) =>
+        setError(err instanceof Error ? err.message : "Could not load pack"),
+      );
   }, [params.id]);
 
   async function onInstall(event: FormEvent) {
@@ -34,7 +41,8 @@ export default function MarketPackPage() {
     setError("");
     try {
       await installPack(botId, pack.id, pack.version);
-      router.push(`/dashboard/bots/${botId}/config`);
+      toast.success("Pack installed");
+      router.push(`/dashboard/bots/${botId}?tab=packs`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not install pack");
       setBusy(false);
@@ -42,22 +50,59 @@ export default function MarketPackPage() {
   }
 
   return (
-    <DashboardShell title={pack?.name ?? "Pack"}>
-      {error ? <div className="mb-4"><ErrorNote>{error}</ErrorNote></div> : null}
-      {!pack ? <p className="text-sm text-muted-foreground">Loading pack...</p> : (
-        <form onSubmit={onInstall} className="rounded-2xl border border-white/10 bg-card p-5">
-          <p className="text-sm text-muted-foreground">{pack.description || "No description"}</p>
-          <p className="mt-2 text-xs text-muted-foreground">{pack.slug} · {pack.version}</p>
-          <label className="mt-5 block text-sm text-white">
-            Install into
-            <select value={botId} onChange={(event) => setBotId(event.target.value)} className="mt-2 min-h-11 w-full rounded-lg border border-white/10 bg-black/20 px-3 text-sm text-white">
-              {bots.length === 0 ? <option value="">Create a bot first</option> : null}
-              {bots.map((bot) => <option key={bot.id} value={bot.id}>{bot.name}</option>)}
+    <DashboardShell
+      title={pack?.name ?? "Pack"}
+      description={pack ? `${pack.slug} · ${pack.version}` : undefined}
+      actions={
+        <Link
+          href="/dashboard/market"
+          className="inline-flex h-9 items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <ArrowLeft className="size-4" />
+          Market
+        </Link>
+      }
+    >
+      {error ? (
+        <p role="alert" className="mb-4 text-sm text-destructive">
+          {error}
+        </p>
+      ) : null}
+
+      {!pack ? (
+        <p className="text-sm text-muted-foreground">Loading pack…</p>
+      ) : (
+        <form onSubmit={onInstall} className="max-w-md space-y-5">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge>{pack.visibility}</Badge>
+              <Badge variant="default">{pack.version}</Badge>
+            </div>
+            <p className="mt-3 text-sm text-muted-foreground">
+              {pack.description || "No description"}
+            </p>
+          </div>
+
+          <Field label="Install into bot">
+            <select
+              value={botId}
+              onChange={(event) => setBotId(event.target.value)}
+              className="flex h-11 w-full rounded-sm border border-border bg-[var(--color-inset)] px-3 text-sm text-foreground sm:h-9"
+            >
+              {bots.length === 0 ? (
+                <option value="">Create a bot first</option>
+              ) : null}
+              {bots.map((bot) => (
+                <option key={bot.id} value={bot.id}>
+                  {bot.name}
+                </option>
+              ))}
             </select>
-          </label>
-          <button type="submit" disabled={busy || !botId} className="mt-4 min-h-11 rounded-lg bg-primary px-4 text-sm font-semibold text-white disabled:opacity-60">
-            {busy ? "Installing..." : "Install pack"}
-          </button>
+          </Field>
+
+          <Button type="submit" disabled={!botId} loading={busy}>
+            Install pack
+          </Button>
         </form>
       )}
     </DashboardShell>

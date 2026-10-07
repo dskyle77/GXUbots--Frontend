@@ -43,6 +43,7 @@ export function PathField({
 
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState(value);
+  const [highlight, setHighlight] = useState(-1);
   const rootRef = useRef<HTMLDivElement>(null);
   const listId = useId();
 
@@ -111,9 +112,29 @@ export function PathField({
         }}
         onFocus={() => setOpen(true)}
         onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            setOpen(false);
+            return;
+          }
+          if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+            event.preventDefault();
+            if (!open) {
+              setOpen(true);
+              return;
+            }
+            setHighlight((h) => {
+              const n = filtered.length;
+              if (!n) return -1;
+              if (event.key === "ArrowDown") return h < 0 ? 0 : (h + 1) % n;
+              return h <= 0 ? n - 1 : h - 1;
+            });
+            return;
+          }
           if (event.key === "Enter") {
             event.preventDefault();
-            if (filtered[0]) commit(filtered[0].path);
+            if (highlight >= 0 && filtered[highlight]) commit(filtered[highlight].path);
+            else if (filtered[0]) commit(filtered[0].path);
             else commit(query);
           }
         }}
@@ -128,7 +149,7 @@ export function PathField({
         <div
           id={listId}
           role="listbox"
-          className="absolute z-40 mt-1 max-h-64 w-full overflow-auto rounded-lg border border-white/10 bg-[#14161e] p-1 shadow-gxu"
+          className="absolute z-40 mt-1 max-h-64 w-full overflow-auto rounded-lg border border-border bg-popover p-1 shadow-gxu"
         >
           {grouped.length === 0 ? (
             <p className="px-3 py-2 text-sm text-muted-foreground">
@@ -137,24 +158,31 @@ export function PathField({
           ) : (
             grouped.map(({ group, items }) => (
               <div key={group} className="mb-1">
-                <p className="px-3 py-1 text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                <p className="px-3 py-1 text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
                   {groupLabel(group)}
                 </p>
                 {items.map((option) => {
                   const active = option.path === value;
+                  const flatIndex = filtered.indexOf(option);
+                  const focused = flatIndex === highlight;
                   return (
                     <button
                       key={option.path}
                       type="button"
                       role="option"
                       aria-selected={active}
+                      onMouseEnter={() => setHighlight(flatIndex)}
                       onClick={() => commit(option.path)}
                       className={`flex w-full items-center justify-between gap-3 rounded-md px-3 py-1.5 text-left text-sm ${
-                        active ? "bg-primary/15 text-white" : "text-white/85 hover:bg-white/5"
+                        focused
+                          ? "bg-[var(--color-hover)] text-foreground"
+                          : active
+                            ? "bg-primary/15 text-foreground"
+                            : "text-foreground/85 hover:bg-[var(--color-hover)]"
                       }`}
                     >
                       <span className="min-w-0">
-                        <span className="block truncate font-mono text-[13px]">{option.path}</span>
+                        <span className="block truncate font-mono text-sm">{option.path}</span>
                         {option.hint ? (
                           <span className="block truncate text-xs text-muted-foreground">{option.hint}</span>
                         ) : null}
@@ -202,12 +230,12 @@ export function InsertPathButton({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="h-8 rounded-md border border-white/10 px-2.5 text-xs font-medium text-muted-foreground hover:bg-white/5 hover:text-white"
+        className="h-8 rounded-md border border-border px-2.5 text-xs font-medium text-muted-foreground hover:bg-[var(--color-hover)] hover:text-foreground"
       >
         Insert path
       </button>
       {open ? (
-        <div className="absolute right-0 z-40 mt-1 max-h-56 w-64 overflow-auto rounded-lg border border-white/10 bg-[#14161e] p-1 shadow-gxu">
+        <div className="absolute right-0 z-40 mt-1 max-h-56 w-64 overflow-auto rounded-lg border border-border bg-popover p-1 shadow-gxu">
           {options.length === 0 ? (
             <p className="px-3 py-2 text-sm text-muted-foreground">No paths yet</p>
           ) : (
@@ -219,9 +247,9 @@ export function InsertPathButton({
                   onInsert(`{{${option.path}}}`);
                   setOpen(false);
                 }}
-                className="flex w-full flex-col rounded-md px-3 py-1.5 text-left hover:bg-white/5"
+                className="flex w-full flex-col rounded-md px-3 py-1.5 text-left hover:bg-[var(--color-hover)]"
               >
-                <span className="font-mono text-[13px] text-white">{option.path}</span>
+                <span className="font-mono text-sm text-foreground">{option.path}</span>
                 {option.hint ? (
                   <span className="text-xs text-muted-foreground">{option.hint}</span>
                 ) : null}

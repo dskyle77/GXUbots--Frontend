@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ErrorNote } from "./ui";
-import { BottomSheet } from "./BottomSheet";
+import { MoreHorizontal, Plus, Search } from "lucide-react";
 import {
   exposedVariables,
   getPack,
@@ -17,12 +16,35 @@ import {
   type PackSummary,
 } from "../../lib/packs";
 import { groupExposed, updateAvailable } from "../../lib/pack-settings";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import { Field } from "../ui/field";
+import { Badge } from "../ui/badge";
+import { Switch } from "../ui/switch";
+import { EmptyState } from "../ui/empty-state";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "../ui/dropdown-menu";
+import { toast } from "../ui/toast";
 
 export function BotConfigEditor({ botId }: { botId: string }) {
   const [installed, setInstalled] = useState<InstalledPack[]>([]);
   const [error, setError] = useState("");
   const [adding, setAdding] = useState(false);
-  const [settingsFor, setSettingsFor] = useState<PackSummary[]>([]);
+  const [settingsPack, setSettingsPack] = useState<PackSummary | null>(null);
+  const [settingsInstalled, setSettingsInstalled] = useState<InstalledPack | null>(null);
   const [busy, setBusy] = useState("");
 
   async function reload() {
@@ -30,18 +52,29 @@ export function BotConfigEditor({ botId }: { botId: string }) {
   }
 
   useEffect(() => {
-    reload().catch((err: unknown) => setError(err instanceof Error ? err.message : "Could not load packs"));
+    reload().catch((err: unknown) =>
+      setError(err instanceof Error ? err.message : "Could not load packs"),
+    );
   }, [botId]);
 
   async function onInstall(pack: PackSummary) {
     setError("");
     setBusy(pack.id);
     try {
-      const result = await installPack(botId, pack.id, pack.version === "draft" ? "draft" : undefined);
+      const result = await installPack(
+        botId,
+        pack.id,
+        pack.version === "draft" ? "draft" : undefined,
+      );
       const sheets = await Promise.all(result.added.map((item) => getPack(item.packId)));
       setAdding(false);
-      setSettingsFor(sheets.filter((item) => exposedVariables(item).length > 0));
+      const withSettings = sheets.find((item) => exposedVariables(item).length > 0);
+      if (withSettings) {
+        setSettingsPack(withSettings);
+        setSettingsInstalled(null);
+      }
       await reload();
+      toast.success(`Installed ${pack.name}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not add pack");
     } finally {
@@ -49,55 +82,112 @@ export function BotConfigEditor({ botId }: { botId: string }) {
     }
   }
 
+  async function openSettings(pack: InstalledPack) {
+    try {
+      const full = await getPack(pack.packId);
+      setSettingsPack(full);
+      setSettingsInstalled(pack);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not load pack settings");
+    }
+  }
+
   return (
-    <div className="space-y-3">
-      {error ? <ErrorNote>{error}</ErrorNote> : null}
-      <button type="button" onClick={() => setAdding(true)} className="min-h-11 rounded-lg bg-primary px-4 text-sm font-semibold text-white">
-        Add pack
-      </button>
-      {installed.length === 0 ? (
-        <p className="rounded-2xl border border-dashed border-white/10 px-4 py-8 text-sm text-muted-foreground">No packs installed.</p>
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-muted-foreground">
+          Install packs and configure the values they expose.
+        </p>
+        <Button onClick={() => setAdding(true)}>
+          <Plus className="size-4" />
+          Add pack
+        </Button>
+      </div>
+
+      {error ? (
+        <p role="alert" className="text-sm text-destructive">
+          {error}
+        </p>
       ) : null}
-      {installed.map((pack) => (
-        <PackRow
-          key={pack.packId}
-          pack={pack}
-          busy={busy === pack.packId}
-          onError={setError}
-          onChange={reload}
-          onUninstall={async () => {
-            setBusy(pack.packId);
-            try {
-              await uninstallPack(botId, pack.packId);
-              await reload();
-            } catch (err) {
-              setError(err instanceof Error ? err.message : "Could not remove pack");
-            } finally {
-              setBusy("");
-            }
-          }}
-          onUpdate={async () => {
-            const target =
-              pack.version === "draft" ? "draft" : pack.latestVersion ?? undefined;
-            if (!target) return;
-            setBusy(pack.packId);
-            try {
-              await updateInstalledPack(botId, pack.packId, { version: target });
-              await reload();
-            } catch (err) {
-              setError(err instanceof Error ? err.message : "Could not update pack");
-            } finally {
-              setBusy("");
-            }
-          }}
+
+      {installed.length === 0 ? (
+        <EmptyState
+          title="No packs installed"
+          description="Add a pack from My packs or Market to give this bot commands."
+          action={
+            <Button onClick={() => setAdding(true)}>
+              <Plus className="size-4" />
+              Add pack
+            </Button>
+          }
         />
-      ))}
-      {adding ? <AddPackSheet botId={botId} installed={installed} busy={busy} onClose={() => setAdding(false)} onPick={onInstall} /> : null}
-      {settingsFor.length > 0 ? (
-        <SettingsSheet
+      ) : (
+        <ul className="divide-y divide-border border-y border-border">
+          {installed.map((pack) => (
+            <PackRow
+              key={pack.packId}
+              pack={pack}
+              busy={busy === pack.packId}
+              onUpdate={async () => {
+                const target =
+                  pack.version === "draft" ? "draft" : pack.latestVersion ?? undefined;
+                if (!target) return;
+                setBusy(pack.packId);
+                try {
+                  await updateInstalledPack(botId, pack.packId, { version: target });
+                  await reload();
+                  toast.success(
+                    pack.version === "draft" ? "Draft reloaded" : `Updated to ${target}`,
+                  );
+                } catch (err) {
+                  setError(err instanceof Error ? err.message : "Could not update pack");
+                } finally {
+                  setBusy("");
+                }
+              }}
+              onUninstall={async () => {
+                setBusy(pack.packId);
+                try {
+                  await uninstallPack(botId, pack.packId);
+                  await reload();
+                  toast.success("Pack removed");
+                } catch (err) {
+                  setError(err instanceof Error ? err.message : "Could not remove pack");
+                } finally {
+                  setBusy("");
+                }
+              }}
+              onSettings={() => void openSettings(pack)}
+              onToggle={async (enabled) => {
+                try {
+                  await updateInstalledPack(botId, pack.packId, { enabled });
+                  await reload();
+                } catch (err) {
+                  setError(err instanceof Error ? err.message : "Could not update pack");
+                }
+              }}
+            />
+          ))}
+        </ul>
+      )}
+
+      <AddPackDialog
+        open={adding}
+        onOpenChange={setAdding}
+        installed={installed}
+        busy={busy}
+        onPick={onInstall}
+      />
+
+      {settingsPack ? (
+        <SettingsDialog
           botId={botId}
-          packs={settingsFor}
-          onClose={() => setSettingsFor([])}
+          pack={settingsPack}
+          installed={settingsInstalled}
+          onClose={() => {
+            setSettingsPack(null);
+            setSettingsInstalled(null);
+          }}
           onSaved={reload}
         />
       ) : null}
@@ -108,204 +198,290 @@ export function BotConfigEditor({ botId }: { botId: string }) {
 function PackRow({
   pack,
   busy,
-  onUninstall,
   onUpdate,
+  onUninstall,
+  onSettings,
+  onToggle,
 }: {
   pack: InstalledPack;
   busy: boolean;
-  onError: (message: string) => void;
-  onChange: () => Promise<void>;
-  onUninstall: () => Promise<void>;
   onUpdate: () => Promise<void>;
+  onUninstall: () => Promise<void>;
+  onSettings: () => void;
+  onToggle: (enabled: boolean) => Promise<void>;
 }) {
   const canUpdate = updateAvailable(pack.version, pack.latestVersion);
   const isDraft = pack.version === "draft";
-  const updateLabel = isDraft
-    ? "Reload draft"
-    : canUpdate
-      ? `Update ${pack.latestVersion}`
-      : "Up to date";
+
   return (
-    <article className="rounded-2xl border border-white/10 bg-card p-4">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div>
-          <h2 className="font-medium text-white">{pack.name}</h2>
-          <p className="text-sm text-muted-foreground">{pack.slug} · {pack.version}</p>
+    <li className="flex flex-wrap items-center gap-3 py-3.5 sm:flex-nowrap">
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="truncate text-sm font-medium text-foreground">{pack.name}</p>
+          {canUpdate && !isDraft ? (
+            <Badge variant="primary">Update {pack.latestVersion}</Badge>
+          ) : null}
+          {isDraft ? <Badge variant="primary">Draft</Badge> : null}
+          {!pack.enabled ? <Badge>Disabled</Badge> : null}
         </div>
-        {canUpdate && !isDraft ? (
-          <span className="rounded-full bg-primary/15 px-2.5 py-1 text-xs text-primary">
-            Update {pack.latestVersion}
-          </span>
-        ) : null}
-        {isDraft ? (
-          <span className="rounded-full bg-primary/15 px-2.5 py-1 text-xs text-primary">
-            Draft — reload after save
-          </span>
-        ) : null}
+        <p className="truncate text-xs text-muted-foreground">
+          {pack.slug} · {pack.version}
+          {typeof pack.priority === "number" ? ` · priority ${pack.priority}` : ""}
+        </p>
       </div>
-      <div className="mt-3 flex flex-wrap gap-2">
-        <button type="button" disabled={busy || (!canUpdate && !isDraft)} onClick={() => void onUpdate()} className="min-h-11 rounded-lg border border-white/10 px-3 text-sm text-white disabled:opacity-40">
-          {updateLabel}
-        </button>
-        <button type="button" disabled={busy} onClick={() => void onUninstall()} className="min-h-11 rounded-lg border border-white/10 px-3 text-sm text-white">
-          Remove
-        </button>
-      </div>
-      <PackControls pack={pack} />
-    </article>
+
+      <Switch
+        checked={pack.enabled}
+        disabled={busy}
+        onCheckedChange={(checked) => void onToggle(checked)}
+        aria-label={pack.enabled ? "Disable pack" : "Enable pack"}
+      />
+
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="iconSm" disabled={busy} aria-label="Pack actions">
+            <MoreHorizontal className="size-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          {canUpdate ? (
+            <DropdownMenuItem onSelect={() => void onUpdate()}>
+              {isDraft ? "Reload draft" : `Update to ${pack.latestVersion}`}
+            </DropdownMenuItem>
+          ) : null}
+          <DropdownMenuItem onSelect={onSettings}>Settings</DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem danger onSelect={() => void onUninstall()}>
+            Remove
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </li>
   );
 }
 
-function PackControls({ pack }: { pack: InstalledPack }) {
-  const [enabled, setEnabled] = useState(pack.enabled);
-  const [priority, setPriority] = useState(String(pack.priority));
-  useEffect(() => {
-    setEnabled(pack.enabled);
-    setPriority(String(pack.priority));
-  }, [pack.enabled, pack.priority]);
-  return (
-    <div className="mt-3 grid gap-2 sm:grid-cols-2">
-      <button
-        type="button"
-        aria-pressed={enabled}
-        onClick={() => {
-          const next = !enabled;
-          setEnabled(next);
-          void updateInstalledPack(pack.botId, pack.packId, { enabled: next });
-        }}
-        className="min-h-11 rounded-lg border border-white/10 px-3 text-left text-sm text-white"
-      >
-        {enabled ? "Enabled" : "Disabled"}
-      </button>
-      <label className="block text-xs text-muted-foreground">
-        Priority
-        <input
-          value={priority}
-          inputMode="numeric"
-          onChange={(event) => setPriority(event.target.value)}
-          onBlur={() => void updateInstalledPack(pack.botId, pack.packId, { priority: Number(priority) || 0 })}
-          className="mt-1 min-h-11 w-full rounded-lg border border-white/10 bg-black/20 px-3 text-sm text-white"
-        />
-      </label>
-    </div>
-  );
-}
-
-function AddPackSheet({
+function AddPackDialog({
+  open,
+  onOpenChange,
   installed,
   busy,
-  onClose,
   onPick,
 }: {
-  botId: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   installed: InstalledPack[];
   busy: string;
-  onClose: () => void;
   onPick: (pack: PackSummary) => void;
 }) {
   const [query, setQuery] = useState("");
   const [packs, setPacks] = useState<PackSummary[]>([]);
   const [error, setError] = useState("");
+
   useEffect(() => {
+    if (!open) return;
+    setQuery("");
     Promise.all([listOwnPacks(), listPublicPacks()])
       .then(([own, pub]) => {
         const seen = new Set<string>();
-        setPacks([...own, ...pub].filter((pack) => (seen.has(pack.id) ? false : seen.add(pack.id))));
+        setPacks(
+          [...own, ...pub].filter((pack) => (seen.has(pack.id) ? false : (seen.add(pack.id), true))),
+        );
       })
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : "Could not load packs"));
-  }, []);
-  const installedIds = new Set(installed.map((pack) => pack.packId));
+      .catch((err: unknown) =>
+        setError(err instanceof Error ? err.message : "Could not load packs"),
+      );
+  }, [open]);
+
+  const installedIds = useMemo(
+    () => new Set(installed.map((pack) => pack.packId)),
+    [installed],
+  );
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    return packs.filter((pack) => !installedIds.has(pack.id) && (!needle || `${pack.name} ${pack.slug}`.toLowerCase().includes(needle)));
-  }, [packs, query, installed]);
+    return packs.filter(
+      (pack) =>
+        !installedIds.has(pack.id) &&
+        (!needle || `${pack.name} ${pack.slug}`.toLowerCase().includes(needle)),
+    );
+  }, [packs, query, installedIds]);
+
   return (
-    <BottomSheet title="Add pack" onClose={onClose}>
-      {error ? <ErrorNote>{error}</ErrorNote> : null}
-      <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search packs" className="min-h-11 w-full rounded-lg border border-white/10 bg-black/20 px-3 text-sm text-white" />
-      <div className="mt-3 space-y-2">
-        {visible.map((pack) => (
-          <button key={pack.id} type="button" disabled={busy === pack.id} onClick={() => onPick(pack)} className="min-h-11 w-full rounded-lg border border-white/10 px-3 text-left text-sm text-white">
-            {pack.name} · {pack.slug} · {pack.version}
-          </button>
-        ))}
-      </div>
-    </BottomSheet>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Add pack</DialogTitle>
+          <DialogDescription>Search your packs and the public market.</DialogDescription>
+        </DialogHeader>
+        <div className="relative mt-2">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search packs"
+            className="pl-9"
+            autoFocus
+          />
+        </div>
+        {error ? (
+          <p className="text-sm text-destructive" role="alert">
+            {error}
+          </p>
+        ) : null}
+        <ul className="mt-2 max-h-64 divide-y divide-border overflow-y-auto border-y border-border">
+          {visible.length === 0 ? (
+            <li className="py-6 text-center text-sm text-muted-foreground">No matching packs</li>
+          ) : (
+            visible.map((pack) => (
+              <li key={pack.id}>
+                <button
+                  type="button"
+                  disabled={busy === pack.id}
+                  onClick={() => onPick(pack)}
+                  className="flex w-full items-center justify-between gap-2 px-1 py-3 text-left text-sm transition-colors hover:bg-[var(--color-hover)] disabled:opacity-50"
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium text-foreground">{pack.name}</span>
+                    <span className="block truncate text-xs text-muted-foreground">
+                      {pack.slug} · {pack.version}
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-xs text-primary">Install</span>
+                </button>
+              </li>
+            ))
+          )}
+        </ul>
+      </DialogContent>
+    </Dialog>
   );
 }
 
-function SettingsSheet({
+function SettingsDialog({
   botId,
-  packs,
+  pack,
+  installed,
   onClose,
   onSaved,
 }: {
   botId: string;
-  packs: PackSummary[];
+  pack: PackSummary;
+  installed: InstalledPack | null;
   onClose: () => void;
   onSaved: () => Promise<void>;
 }) {
-  const [index, setIndex] = useState(0);
-  const pack = packs[index];
-  const fields = pack ? exposedVariables(pack) : [];
+  const fields = exposedVariables(pack);
   const [values, setValues] = useState<Record<string, string>>({});
+  const [priority, setPriority] = useState(String(installed?.priority ?? 0));
+  const [saving, setSaving] = useState(false);
+
   useEffect(() => {
-    setValues(Object.fromEntries(fields.map((field) => [field.name, field.default == null ? "" : String(field.default)])));
-  }, [pack?.id]);
-  if (!pack) return null;
-  return (
-    <BottomSheet title={`Settings · ${pack.name}`} onClose={onClose}>
-      {groupExposed(fields).map((group) => (
-        <section key={group.label} className="mb-4">
-          <h3 className="text-sm font-medium text-white">{group.label}</h3>
-          {group.fields.map((field) => (
-            <Field key={field.name} field={field} value={values[field.name] ?? ""} onChange={(value) => setValues({ ...values, [field.name]: value })} />
-          ))}
-        </section>
-      ))}
-      <button
-        type="button"
-        className="min-h-11 rounded-lg bg-primary px-4 text-sm font-semibold text-white"
-        onClick={() => {
-          void updateInstalledPack(botId, pack.id, { settings: coerce(fields, values) }).then(async () => {
-            if (index + 1 < packs.length) setIndex(index + 1);
-            else {
-              await onSaved();
-              onClose();
-            }
-          });
-        }}
-      >
-        {index + 1 < packs.length ? "Next pack" : "Save"}
-      </button>
-    </BottomSheet>
-  );
-}
-
-function Field({ field, value, onChange }: { field: ExposedVariable; value: string; onChange: (value: string) => void }) {
-  if (field.type === "boolean") {
-    const on = value === "true";
-    return (
-      <button type="button" onClick={() => onChange(on ? "false" : "true")} className="mt-2 min-h-11 w-full rounded-lg border border-white/10 px-3 text-left text-sm text-white">
-        {field.name}: {on ? "On" : "Off"}
-      </button>
+    const base = Object.fromEntries(
+      fields.map((field) => [field.name, field.default == null ? "" : String(field.default)]),
     );
+    if (installed?.settings) {
+      for (const [key, value] of Object.entries(installed.settings)) {
+        base[key] = value == null ? "" : String(value);
+      }
+    }
+    setValues(base);
+    setPriority(String(installed?.priority ?? 0));
+  }, [pack.id, installed?.packId]);
+
+  async function save() {
+    setSaving(true);
+    try {
+      await updateInstalledPack(botId, pack.id, {
+        settings: coerce(fields, values),
+        priority: Number(priority) || 0,
+      });
+      await onSaved();
+      toast.success("Settings saved");
+      onClose();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not save settings");
+    } finally {
+      setSaving(false);
+    }
   }
+
   return (
-    <label className="mt-2 block text-xs text-muted-foreground">
-      {field.name}
-      <input value={value} onChange={(event) => onChange(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-white/10 bg-black/20 px-3 text-sm text-white" />
-    </label>
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{pack.name}</DialogTitle>
+          <DialogDescription>Pack settings and priority.</DialogDescription>
+        </DialogHeader>
+        <div className="max-h-[60vh] space-y-4 overflow-y-auto py-1">
+          <Field label="Priority" hint="Higher runs first when triggers collide">
+            <Input
+              value={priority}
+              inputMode="numeric"
+              onChange={(event) => setPriority(event.target.value)}
+            />
+          </Field>
+          {groupExposed(fields).map((group) => (
+            <section key={group.label} className="space-y-3">
+              <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                {group.label}
+              </h3>
+              {group.fields.map((field) => (
+                <SettingField
+                  key={field.name}
+                  field={field}
+                  value={values[field.name] ?? ""}
+                  onChange={(value) => setValues({ ...values, [field.name]: value })}
+                />
+              ))}
+            </section>
+          ))}
+          {fields.length === 0 ? (
+            <p className="text-sm text-muted-foreground">This pack has no exposed settings.</p>
+          ) : null}
+        </div>
+        <DialogFooter>
+          <Button variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button loading={saving} onClick={() => void save()}>
+            Save
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
-function coerce(fields: ExposedVariable[], values: Record<string, string>) {
-  const settings: Record<string, unknown> = {};
+function SettingField({
+  field,
+  value,
+  onChange,
+}: {
+  field: ExposedVariable;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <Field label={field.name} hint={field.type}>
+      <Input value={value} onChange={(event) => onChange(event.target.value)} />
+    </Field>
+  );
+}
+
+function coerce(
+  fields: ExposedVariable[],
+  values: Record<string, string>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
   for (const field of fields) {
     const raw = values[field.name] ?? "";
-    if (field.type === "number") settings[field.name] = Number(raw);
-    else if (field.type === "boolean") settings[field.name] = raw === "true";
-    else settings[field.name] = raw;
+    if (field.type === "number") {
+      const n = Number(raw);
+      out[field.name] = Number.isFinite(n) ? n : 0;
+    } else if (field.type === "boolean") {
+      out[field.name] = raw === "true" || raw === "1";
+    } else {
+      out[field.name] = raw;
+    }
   }
-  return settings;
+  return out;
 }
