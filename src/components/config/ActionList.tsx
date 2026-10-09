@@ -1,12 +1,38 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  pointerWithin,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type CollisionDetection,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import {
   actionLabels,
+  actionTypeGroups,
   actionTypes,
   blankAction,
   clientId,
   literal,
+  variableExpr,
   parameterTypes,
   type EditorAction,
   type EditorExpression,
@@ -19,10 +45,9 @@ import { InsertPathButton, PathField } from "./PathField";
 import {
   Field,
   Hint,
-  IconButton,
+  RowMenu,
   MenuSelect,
   SecondaryButton,
-  SortableList,
   TextArea,
   TextInput,
   moveItem,
@@ -30,19 +55,30 @@ import {
   removeAt,
 } from "./ui";
 import { cn } from "../../lib/cn";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "../ui/dropdown-menu";
+import { listIdFor, moveOut, relocateAction } from "../../lib/action-tree";
 
 /** Actions with no editable fields — always stay compact. */
 const FIELDLESS = new Set<EditorAction["type"]>([
   "continue",
   "break",
-  "delete_message",
   "stop_event",
+  "lock_group",
+  "unlock_group",
 ]);
 
 /** Soft surface tint per action family — readable separation without loud colors. */
 function actionSurface(type: EditorAction["type"]): string {
   switch (type) {
     case "if":
+    case "switch":
     case "repeat":
       return "bg-primary/[0.06] border-primary/15";
     case "send_message":
@@ -53,6 +89,7 @@ function actionSurface(type: EditorAction["type"]): string {
     case "set_variable":
     case "get_asset":
     case "get_user":
+    case "get_user_from_mention":
     case "get_type":
       return "bg-warning/[0.05] border-warning/15";
     case "call_function":
@@ -62,6 +99,11 @@ function actionSurface(type: EditorAction["type"]): string {
     case "kick":
     case "delete_message":
       return "bg-destructive/[0.06] border-destructive/15";
+    case "lock_group":
+    case "unlock_group":
+    case "get_link":
+    case "reset_link":
+      return "bg-warning/[0.05] border-warning/15";
     case "break":
     case "continue":
     case "wait":
@@ -90,13 +132,17 @@ function exprSummary(expr: EditorExpression | null | undefined): string {
 export function actionSummary(action: EditorAction): string {
   switch (action.type) {
     case "send_message":
-      return action.text.trim() ? `send  ${truncate(action.text)}` : "send message";
+      return action.text.trim()
+        ? `send  ${truncate(action.text)}`
+        : "send message";
     case "reply_message":
       return action.text.trim() ? `reply  ${truncate(action.text)}` : "reply";
     case "react_message":
-      return action.emoji.trim() ? `react  ${action.emoji}` : "react";
+      return action.emoji.trim()
+        ? `react  ${action.emoji}`
+        : `react  ${action.messageId || "message.id"}`;
     case "delete_message":
-      return "delete message";
+      return `delete  ${action.messageId || "message.id"}`;
     case "send_media": {
       const bits = [action.image, action.file].filter((x) => x.trim());
       const cap = action.text.trim() ? truncate(action.text, 24) : "";
@@ -107,25 +153,49 @@ export function actionSummary(action: EditorAction): string {
     case "kick":
       return action.users.trim() ? `kick  ${truncate(action.users)}` : "kick";
     case "add_member":
-      return action.users.trim() ? `add  ${truncate(action.users)}` : "add member";
+      return action.users.trim()
+        ? `add  ${truncate(action.users)}`
+        : "add member";
     case "promote":
-      return action.users.trim() ? `promote  ${truncate(action.users)}` : "promote";
+      return action.users.trim()
+        ? `promote  ${truncate(action.users)}`
+        : "promote";
     case "demote":
-      return action.users.trim() ? `demote  ${truncate(action.users)}` : "demote";
+      return action.users.trim()
+        ? `demote  ${truncate(action.users)}`
+        : "demote";
+    case "lock_group":
+      return "lock group";
+    case "unlock_group":
+      return "unlock group";
+    case "get_link":
+      return action.target.trim()
+        ? `get link → ${truncate(action.target)}`
+        : "get invite link";
+    case "reset_link":
+      return action.target.trim()
+        ? `reset link → ${truncate(action.target)}`
+        : "reset invite link";
     case "set_variable":
       return action.target.trim()
         ? `set  ${action.target} = ${exprSummary(action.value)}`
         : "set variable";
     case "get_asset":
-      return action.asset.trim() ? `asset  ${truncate(action.asset)}` : "get asset";
+      return action.asset.trim()
+        ? `asset  ${truncate(action.asset)}`
+        : "get asset";
     case "get_user":
       return `get user  ${exprSummary(action.userId)} → ${action.target.trim() || "…"}`;
+    case "get_user_from_mention":
+      return `get mention  ${exprSummary(action.mention)} → ${action.target.trim() || "…"}`;
     case "get_type":
       return `typeof  ${exprSummary(action.value)} → ${action.target.trim() || "…"}`;
     case "wait":
       return `wait  ${exprSummary(action.duration)}`;
     case "if":
       return `if  ${exprSummary(action.condition)}`;
+    case "switch":
+      return `switch  ${exprSummary(action.value)}`;
     case "repeat":
       return `repeat  ${action.count}×`;
     case "break":
@@ -135,11 +205,11 @@ export function actionSummary(action: EditorAction): string {
     case "stop_event":
       return "stop event";
     case "call_function": {
-      const name = action.functionName.trim() || "…";
+      const name = truncate(action.functionName.trim() || "…", 24);
       const args =
         action.args.length === 0
           ? "()"
-          : `(${action.args.map((a) => a.name.trim() || "…").join(", ")})`;
+          : `(${truncate(action.args.map((a) => a.name.trim() || "…").join(", "), 24)})`;
       return `call  ${name}${args}`;
     }
     case "return":
@@ -155,6 +225,10 @@ function isActionComplete(action: EditorAction): boolean {
     case "break":
     case "delete_message":
     case "stop_event":
+    case "lock_group":
+    case "unlock_group":
+    case "get_link":
+    case "reset_link":
       return true;
     case "send_message":
     case "reply_message":
@@ -173,6 +247,7 @@ function isActionComplete(action: EditorAction): boolean {
     case "get_asset":
       return Boolean(action.asset.trim());
     case "get_user":
+    case "get_user_from_mention":
       return Boolean(action.target.trim());
     case "get_type":
       return Boolean(action.target.trim());
@@ -180,9 +255,18 @@ function isActionComplete(action: EditorAction): boolean {
       return true;
     case "if": {
       // Treat empty / bare variable as incomplete so new if opens expanded
-      if (action.condition.type === "variable" && !action.condition.path.trim()) return false;
-      if (action.condition.type === "literal" && action.condition.value === "") return false;
+      if (action.condition.type === "variable" && !action.condition.path.trim())
+        return false;
+      if (action.condition.type === "literal" && action.condition.value === "")
+        return false;
       return true;
+    }
+    case "switch": {
+      if (action.value.type === "variable" && !action.value.path.trim())
+        return false;
+      if (action.value.type === "literal" && action.value.value === "")
+        return false;
+      return action.cases.length > 0;
     }
     case "repeat":
       return action.count > 0;
@@ -205,47 +289,192 @@ function childBadge(action: EditorAction): string | null {
     if (e) parts.push(`${e} else`);
     return parts.join(" · ");
   }
+  if (action.type === "switch") {
+    const parts: string[] = [];
+    if (action.cases.length)
+      parts.push(
+        `${action.cases.length} case${action.cases.length === 1 ? "" : "s"}`,
+      );
+    if (action.defaultActions.length) parts.push("default");
+    return parts.length ? parts.join(" · ") : null;
+  }
   if (action.type === "repeat" && action.actions.length) {
     return `${action.actions.length} action${action.actions.length === 1 ? "" : "s"}`;
   }
   return null;
 }
 
+const preferAction: CollisionDetection = (args) => {
+  const hits = pointerWithin(args);
+  const action = hits.find((hit) => !String(hit.id).startsWith("list:"));
+  if (action) return [action];
+  if (hits.length) return hits;
+  return closestCenter(args);
+};
+
+const ActionDragContext = createContext<{
+  relocate: (activeId: string, overId: string) => void;
+  moveOut: (
+    activeId: string,
+    parentActionId: string,
+    place: "before" | "after",
+  ) => void;
+} | null>(null);
+
 export function ActionList({
   actions,
   onChange,
   depth = 0,
   rootActions,
+  listId = "root",
+  parentActionId,
 }: {
   actions: EditorAction[];
   onChange: (actions: EditorAction[]) => void;
   depth?: number;
   rootActions?: EditorAction[];
+  listId?: string;
+  parentActionId?: string;
 }) {
+  const drag = useContext(ActionDragContext);
   const tree = rootActions ?? actions;
+  const body = (
+    <ActionListBody
+      actions={actions}
+      onChange={onChange}
+      depth={depth}
+      rootActions={tree}
+      listId={listId}
+      parentActionId={parentActionId}
+    />
+  );
+  if (drag) return body;
+  return (
+    <ActionDragRoot actions={actions} onChange={onChange}>
+      {body}
+    </ActionDragRoot>
+  );
+}
+
+function ActionDragRoot({
+  actions,
+  onChange,
+  children,
+}: {
+  actions: EditorAction[];
+  onChange: (actions: EditorAction[]) => void;
+  children: ReactNode;
+}) {
+  const actionsRef = useRef(actions);
+  actionsRef.current = actions;
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+  );
+
+  function relocate(activeId: string, overId: string) {
+    const next = relocateAction(actionsRef.current, activeId, overId);
+    if (next) onChange(next);
+  }
+
+  function onDragEnd(event: DragEndEvent) {
+    const activeId = String(event.active.id);
+    const overId = event.over ? String(event.over.id) : "";
+    if (!overId || activeId === overId) return;
+    relocate(activeId, overId);
+  }
+
+  return (
+    <ActionDragContext.Provider
+      value={{
+        relocate,
+        moveOut: (activeId, parentActionId, place) => {
+          const next = moveOut(
+            actionsRef.current,
+            activeId,
+            parentActionId,
+            place,
+          );
+          if (next) onChange(next);
+        },
+      }}
+    >
+      <DndContext
+        sensors={sensors}
+        collisionDetection={preferAction}
+        onDragEnd={onDragEnd}
+      >
+        {children}
+      </DndContext>
+    </ActionDragContext.Provider>
+  );
+}
+
+function ActionListBody({
+  actions,
+  onChange,
+  depth,
+  rootActions,
+  listId,
+  parentActionId,
+}: {
+  actions: EditorAction[];
+  onChange: (actions: EditorAction[]) => void;
+  depth: number;
+  rootActions: EditorAction[];
+  listId: string;
+  parentActionId?: string;
+}) {
+  const drag = useContext(ActionDragContext);
+  const { setNodeRef, isOver } = useDroppable({ id: `list:${listId}` });
 
   return (
     <div className={depth ? "mt-0.5 border-l border-border pl-2.5" : "mt-1"}>
-      <SortableList
-        items={actions}
-        onChange={onChange}
-        renderItem={(action, index, handle) => (
-          <ActionRow
-            action={action}
-            handle={handle}
-            depth={depth}
-            rootActions={tree}
-            disableUp={index === 0}
-            disableDown={index === actions.length - 1}
-            onChange={(next) =>
-              onChange(actions.map((item, i) => (i === index ? next : item)))
-            }
-            onUp={() => onChange(moveItem(actions, index, -1))}
-            onDown={() => onChange(moveItem(actions, index, 1))}
-            onRemove={() => onChange(removeAt(actions, index))}
-          />
-        )}
-      />
+      <SortableContext
+        items={actions.map((item) => item.clientId)}
+        strategy={verticalListSortingStrategy}
+      >
+        <div
+          ref={setNodeRef}
+          className={isOver ? "rounded-md bg-primary/5" : undefined}
+        >
+          {actions.map((action, index) => (
+            <ActionSortable key={action.clientId} id={action.clientId}>
+              {(handle) => (
+                <ActionRow
+                  action={action}
+                  handle={handle}
+                  depth={depth}
+                  rootActions={rootActions}
+                  disableUp={index === 0 && !parentActionId}
+                  disableDown={index === actions.length - 1 && !parentActionId}
+                  onChange={(next) =>
+                    onChange(
+                      actions.map((item, i) => (i === index ? next : item)),
+                    )
+                  }
+                  onUp={() => {
+                    if (index === 0 && parentActionId)
+                      drag?.moveOut(action.clientId, parentActionId, "before");
+                    else onChange(moveItem(actions, index, -1));
+                  }}
+                  onDown={() => {
+                    if (index === actions.length - 1 && parentActionId)
+                      drag?.moveOut(action.clientId, parentActionId, "after");
+                    else onChange(moveItem(actions, index, 1));
+                  }}
+                  onRemove={() => onChange(removeAt(actions, index))}
+                  onInsertAfter={(next) => {
+                    const copy = [...actions];
+                    copy.splice(index + 1, 0, next);
+                    onChange(copy);
+                  }}
+                />
+              )}
+            </ActionSortable>
+          ))}
+          {actions.length === 0 ? <div className="h-6" /> : null}
+        </div>
+      </SortableContext>
       <button
         type="button"
         className="mt-1.5 text-xs font-medium text-primary transition-colors hover:text-primary/80"
@@ -253,6 +482,47 @@ export function ActionList({
       >
         + Add action
       </button>
+    </div>
+  );
+}
+
+function ActionSortable({
+  id,
+  children,
+}: {
+  id: string;
+  children: (handle: ReactNode) => ReactNode;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition } =
+    useSortable({ id });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+    >
+      {children(
+        <button
+          type="button"
+          className="cursor-grab rounded-md px-1.5 text-muted-foreground hover:text-white active:cursor-grabbing"
+          aria-label="Drag to reorder"
+          {...attributes}
+          {...listeners}
+        >
+          <svg
+            viewBox="0 0 16 16"
+            className="h-4 w-4"
+            fill="currentColor"
+            aria-hidden="true"
+          >
+            <circle cx="5" cy="4" r="1.2" />
+            <circle cx="11" cy="4" r="1.2" />
+            <circle cx="5" cy="8" r="1.2" />
+            <circle cx="11" cy="8" r="1.2" />
+            <circle cx="5" cy="12" r="1.2" />
+            <circle cx="11" cy="12" r="1.2" />
+          </svg>
+        </button>,
+      )}
     </div>
   );
 }
@@ -266,6 +536,7 @@ function ActionRow({
   onUp,
   onDown,
   onRemove,
+  onInsertAfter,
   disableUp,
   disableDown,
 }: {
@@ -277,6 +548,7 @@ function ActionRow({
   onUp: () => void;
   onDown: () => void;
   onRemove: () => void;
+  onInsertAfter: (action: EditorAction) => void;
   disableUp: boolean;
   disableDown: boolean;
 }) {
@@ -297,12 +569,12 @@ function ActionRow({
   return (
     <div
       className={cn(
-        "group my-1 border px-1.5 py-1 transition-colors",
+        "group my-1 min-w-0 max-w-full border px-1.5 py-1 transition-colors",
         actionSurface(action.type),
         open && "ring-1 ring-border/60",
       )}
     >
-      <div className="flex items-center gap-1">
+      <div className="flex min-w-0 items-center gap-1">
         {handle}
         {!fieldless ? (
           <button
@@ -324,31 +596,44 @@ function ActionRow({
               size="sm"
               ariaLabel="Action type"
               value={action.type}
-              onChange={(type) => onChange(blankAction(type as EditorAction["type"]))}
-              options={actionTypes.map((type) => ({
-                value: type,
-                label: actionLabels[type],
-              }))}
+              onChange={(type) =>
+                onChange(blankAction(type as EditorAction["type"]))
+              }
+              options={actionTypeGroups.flatMap((g) =>
+                g.types.map((type) => ({
+                  value: type,
+                  label: actionLabels[type],
+                  group: g.label,
+                })),
+              )}
             />
           </div>
         ) : (
           <button
             type="button"
             className={cn(
-              "min-w-0 flex-1 truncate text-left font-mono text-xs sm:text-sm",
+              "flex min-w-0 flex-1 items-center text-left font-mono text-xs sm:text-sm",
               complete ? "text-foreground" : "text-muted-foreground",
             )}
+            title={summary}
             onClick={() => {
               if (!fieldless) setOpen(true);
             }}
           >
-            {summary}
+            <span className="min-w-0 truncate">{summary}</span>
             {badge ? (
-              <span className="ml-2 font-sans text-[11px] text-muted-foreground">{badge}</span>
+              <span className="ml-2 shrink-0 font-sans text-[11px] text-muted-foreground">
+                {badge}
+              </span>
             ) : null}
           </button>
         )}
 
+        <ErrorHint type={action.type} />
+        <ErrorMenu
+          type={action.type}
+          onBuildSwitch={(next) => onInsertAfter(next)}
+        />
         <ActionMenu
           disableUp={disableUp}
           disableDown={disableDown}
@@ -359,7 +644,7 @@ function ActionRow({
       </div>
 
       {open && !fieldless ? (
-        <div className="pb-1 pl-6">
+        <div className="min-w-0 pb-1 pl-6">
           <ActionFields
             action={action}
             depth={depth}
@@ -385,74 +670,165 @@ function Chevron({ open }: { open: boolean }) {
   );
 }
 
-function ActionMenu({
-  onUp,
-  onDown,
-  onRemove,
-  disableUp,
-  disableDown,
+const ACTION_ERRORS: Partial<Record<EditorAction["type"], string[]>> = {
+  send_message: ["none", "send_rate", "mention_not_found"],
+  send_media: ["none", "media_required", "send_rate"],
+  reply_message: ["none", "no_message", "send_rate", "mention_not_found"],
+  react_message: ["none", "no_message"],
+  delete_message: ["none", "no_message"],
+  kick: [
+    "none",
+    "not_group",
+    "user_required",
+    "mention_not_found",
+    "not_admin",
+    "not_in_group",
+  ],
+  promote: [
+    "none",
+    "not_group",
+    "user_required",
+    "mention_not_found",
+    "not_admin",
+    "not_in_group",
+    "already_admin",
+  ],
+  demote: [
+    "none",
+    "not_group",
+    "user_required",
+    "mention_not_found",
+    "not_admin",
+    "not_in_group",
+  ],
+  add_member: [
+    "none",
+    "phone_required",
+    "not_group",
+    "not_on_whatsapp",
+    "already_in_group",
+    "privacy_blocked",
+    "invalid_number",
+    "not_admin",
+  ],
+  lock_group: ["none", "not_group", "not_admin"],
+  unlock_group: ["none", "not_group", "not_admin"],
+  get_link: ["none", "not_group", "not_admin"],
+  reset_link: ["none", "not_group", "not_admin"],
+  set_variable: ["none", "target_required"],
+  get_asset: ["none", "asset_not_found"],
+  get_user: ["none", "user_required"],
+  get_user_from_mention: ["none", "mention_not_found"],
+  get_type: ["none"],
+  wait: ["none", "invalid_wait", "wait_cap", "wait_total"],
+  call_function: [
+    "none",
+    "function_not_found",
+    "dependency_not_declared",
+    "function_not_exposed",
+    "not_a_value_function",
+    "action_cap",
+    "call_depth",
+  ],
+};
+
+function ErrorHint({ type }: { type: EditorAction["type"] }) {
+  const codes = ACTION_ERRORS[type];
+  if (!codes?.length) return null;
+  return (
+    <span
+      className="hidden max-w-[9rem] shrink truncate font-mono text-[10px] text-muted-foreground lg:inline"
+      title={codes.join(", ")}
+    >
+      lastError: {codes.join(" | ")}
+    </span>
+  );
+}
+
+function errorSwitch(type: EditorAction["type"]): EditorAction | null {
+  const codes = ACTION_ERRORS[type];
+  if (!codes?.length) return null;
+  return {
+    clientId: clientId(),
+    type: "switch",
+    value: variableExpr("local.lastError"),
+    cases: codes.map((code) => ({
+      clientId: clientId(),
+      match: literal(code),
+      actions: [],
+    })),
+    defaultActions: [],
+  };
+}
+
+function ErrorMenu({
+  type,
+  onBuildSwitch,
 }: {
+  type: EditorAction["type"];
+  onBuildSwitch: (action: EditorAction) => void;
+}) {
+  const codes = ACTION_ERRORS[type];
+  const [copied, setCopied] = useState("");
+
+  if (!codes?.length) return null;
+
+  return (
+    <DropdownMenu onOpenChange={(o) => !o && setCopied("")}>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          aria-label="Errors this action sets"
+          className="shrink-0 rounded-sm px-1.5 py-1 font-mono text-[10px] text-muted-foreground hover:bg-[var(--color-hover)] hover:text-foreground data-[state=open]:bg-[var(--color-hover)] data-[state=open]:text-foreground"
+        >
+          err
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuLabel className="font-mono">
+          local.lastError
+        </DropdownMenuLabel>
+        {codes.map((code) => (
+          <DropdownMenuItem
+            key={code}
+            className="justify-between gap-2 font-mono text-xs"
+            onSelect={(event) => {
+              event.preventDefault(); // stay open so "copied" is visible
+              void navigator.clipboard?.writeText(code);
+              setCopied(code);
+            }}
+          >
+            <span className="min-w-0 truncate">{code}</span>
+            {copied === code ? (
+              <span className="shrink-0 font-sans text-[10px] text-muted-foreground">
+                copied
+              </span>
+            ) : null}
+          </DropdownMenuItem>
+        ))}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          className="text-xs font-medium text-primary focus:text-primary"
+          onSelect={() => {
+            const next = errorSwitch(type);
+            if (next) onBuildSwitch(next);
+          }}
+        >
+          Build switch below
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function ActionMenu(props: {
   onUp: () => void;
   onDown: () => void;
   onRemove: () => void;
   disableUp: boolean;
   disableDown: boolean;
 }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    function onPointer(event: PointerEvent) {
-      if (!ref.current?.contains(event.target as Node)) setOpen(false);
-    }
-    function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") setOpen(false);
-    }
-    document.addEventListener("pointerdown", onPointer);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("pointerdown", onPointer);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
-  return (
-    <div ref={ref} className="relative shrink-0">
-      <IconButton type="button" label="Action menu" onClick={() => setOpen((v) => !v)}>
-        ⋯
-      </IconButton>
-      {open ? (
-        <div className="absolute right-0 z-20 mt-1 min-w-[7.5rem] rounded-sm border border-border bg-popover p-0.5 shadow-gxu">
-          {(
-            [
-              ["Move up", onUp, disableUp],
-              ["Move down", onDown, disableDown],
-              ["Remove", onRemove, false],
-            ] as const
-          ).map(([label, fn, disabled]) => (
-            <button
-              key={label}
-              type="button"
-              disabled={disabled}
-              onClick={() => {
-                fn();
-                setOpen(false);
-              }}
-              className={cn(
-                "flex w-full rounded-sm px-2.5 py-1.5 text-left text-xs disabled:opacity-30",
-                label === "Remove"
-                  ? "text-destructive hover:bg-destructive/10"
-                  : "text-foreground/85 hover:bg-[var(--color-hover)]",
-              )}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
+  return <RowMenu label="Action menu" {...props} />;
 }
 
 /** If / then / else — else branch stays closed until "+ else". */
@@ -488,7 +864,7 @@ function IfActionFields({
       <ExprTextField
         value={action.condition}
         rootActions={rootActions}
-        placeholder={'{{local.score}} > 5'}
+        placeholder={"{{local.score}} > 5"}
         onChange={(condition) => onChange({ ...action, condition })}
       />
       <div className="space-y-1">
@@ -497,6 +873,8 @@ function IfActionFields({
           actions={action.actions}
           depth={depth + 1}
           rootActions={rootActions}
+          listId={listIdFor(action, "then")}
+          parentActionId={action.clientId}
           onChange={(actions) => onChange({ ...action, actions })}
         />
       </div>
@@ -526,10 +904,193 @@ function IfActionFields({
             actions={action.elseActions}
             depth={depth + 1}
             rootActions={rootActions}
+            listId={listIdFor(action, "else")}
+            parentActionId={action.clientId}
             onChange={(elseActions) => {
               onChange({ ...action, elseActions });
               // Keep branch open even if the user deletes the last action
               setElseOpen(true);
+            }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SwitchActionFields({
+  action,
+  onChange,
+  depth,
+  rootActions,
+}: {
+  action: Extract<EditorAction, { type: "switch" }>;
+  onChange: (action: EditorAction) => void;
+  depth: number;
+  rootActions: EditorAction[];
+}) {
+  const [defaultOpen, setDefaultOpen] = useState(
+    action.defaultActions.length > 0,
+  );
+  const [openCases, setOpenCases] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    if (action.defaultActions.length > 0) setDefaultOpen(true);
+  }, [action.defaultActions.length]);
+
+  function updateCase(
+    index: number,
+    patch: Partial<(typeof action.cases)[number]>,
+  ) {
+    onChange({
+      ...action,
+      cases: action.cases.map((item, i) =>
+        i === index ? { ...item, ...patch } : item,
+      ),
+    });
+  }
+
+  function moveCase(index: number, direction: -1 | 1) {
+    onChange({
+      ...action,
+      cases: moveItem(action.cases, index, direction),
+    });
+  }
+
+  return (
+    <div className="mt-1.5 min-w-0 space-y-2">
+      <ExprTextField
+        value={action.value}
+        rootActions={rootActions}
+        placeholder={"{{local.lastError}}"}
+        onChange={(value) => onChange({ ...action, value })}
+      />
+      {action.cases.map((item, index) => {
+        const expanded = openCases[item.clientId] ?? item.actions.length > 0;
+        const label = formatExpressionText(item.match) || "…";
+        return (
+          <div key={item.clientId} className="min-w-0 space-y-1">
+            <div className="flex min-w-0 items-center gap-2">
+              <button
+                type="button"
+                className="inline-flex min-w-0 items-center gap-1 font-mono text-[11px] text-muted-foreground hover:text-foreground"
+                onClick={() =>
+                  setOpenCases((current) => ({
+                    ...current,
+                    [item.clientId]: !expanded,
+                  }))
+                }
+              >
+                <Chevron open={expanded} />
+                <span className="truncate">case {label}</span>
+              </button>
+              <div className="ml-auto flex shrink-0 items-center gap-1">
+                {action.cases.length > 1 ? (
+                  <>
+                    <button
+                      type="button"
+                      aria-label="Move case up"
+                      disabled={index === 0}
+                      className="text-[11px] text-muted-foreground hover:text-foreground disabled:opacity-30"
+                      onClick={() => moveCase(index, -1)}
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="Move case down"
+                      disabled={index === action.cases.length - 1}
+                      className="text-[11px] text-muted-foreground hover:text-foreground disabled:opacity-30"
+                      onClick={() => moveCase(index, 1)}
+                    >
+                      ↓
+                    </button>
+                    <button
+                      type="button"
+                      className="text-[11px] text-muted-foreground hover:text-destructive"
+                      onClick={() =>
+                        onChange({
+                          ...action,
+                          cases: action.cases.filter((_, i) => i !== index),
+                        })
+                      }
+                    >
+                      remove
+                    </button>
+                  </>
+                ) : null}
+              </div>
+            </div>
+            {expanded ? (
+              <>
+                <ExprTextField
+                  value={item.match}
+                  rootActions={rootActions}
+                  placeholder={'"not_on_whatsapp"'}
+                  onChange={(match) => updateCase(index, { match })}
+                />
+                <ActionList
+                  actions={item.actions}
+                  depth={depth + 1}
+                  rootActions={rootActions}
+                  listId={`${item.clientId}:case`}
+                  parentActionId={action.clientId}
+                  onChange={(actions) => updateCase(index, { actions })}
+                />
+              </>
+            ) : null}
+          </div>
+        );
+      })}
+      <button
+        type="button"
+        className="text-xs font-medium text-primary hover:text-primary/80"
+        onClick={() =>
+          onChange({
+            ...action,
+            cases: [
+              ...action.cases,
+              { clientId: clientId(), match: literal(""), actions: [] },
+            ],
+          })
+        }
+      >
+        + case
+      </button>
+      {!defaultOpen ? (
+        <button
+          type="button"
+          className="ml-3 text-xs font-medium text-primary hover:text-primary/80"
+          onClick={() => setDefaultOpen(true)}
+        >
+          + default
+        </button>
+      ) : (
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <p className="font-mono text-[11px] text-muted-foreground">
+              default
+            </p>
+            <button
+              type="button"
+              className="text-[11px] text-muted-foreground hover:text-destructive"
+              onClick={() => {
+                setDefaultOpen(false);
+                onChange({ ...action, defaultActions: [] });
+              }}
+            >
+              remove
+            </button>
+          </div>
+          <ActionList
+            actions={action.defaultActions}
+            depth={depth + 1}
+            rootActions={rootActions}
+            listId={listIdFor(action, "default")}
+            parentActionId={action.clientId}
+            onChange={(defaultActions) => {
+              onChange({ ...action, defaultActions });
+              setDefaultOpen(true);
             }}
           />
         </div>
@@ -556,13 +1117,17 @@ function ActionFields({
       <div className="mt-1.5 space-y-1">
         <TextArea
           value={action.text}
-          onChange={(event) => onChange({ ...action, text: event.target.value })}
+          onChange={(event) =>
+            onChange({ ...action, text: event.target.value })
+          }
           className="min-h-16"
-          placeholder="Message text…"
+          placeholder="Hello {{tag(user.id)}}"
         />
         <InsertPathForMessage
           rootActions={rootActions}
-          onInsert={(snippet) => onChange({ ...action, text: action.text + snippet })}
+          onInsert={(snippet) =>
+            onChange({ ...action, text: action.text + snippet })
+          }
         />
       </div>
     );
@@ -570,34 +1135,83 @@ function ActionFields({
 
   if (action.type === "reply_message") {
     return (
-      <div className="mt-1.5">
+      <div className="mt-1.5 space-y-2">
         <TextArea
           value={action.text}
-          onChange={(event) => onChange({ ...action, text: event.target.value })}
+          onChange={(event) =>
+            onChange({ ...action, text: event.target.value })
+          }
           className="min-h-16"
-          placeholder="Reply text…"
+          placeholder="Hello {{tag(message.quotedUserId)}}"
         />
+        <Field label="Message id">
+          <PathField
+            value={action.messageId}
+            placeholder="message.id"
+            actionsForLocal={rootActions}
+            size="sm"
+            onChange={(messageId) => onChange({ ...action, messageId })}
+          />
+        </Field>
       </div>
     );
   }
 
   if (action.type === "react_message") {
     return (
-      <div className="mt-1.5">
+      <div className="mt-1.5 space-y-2">
         <TextInput
           value={action.emoji}
           placeholder="👍"
-          onChange={(event) => onChange({ ...action, emoji: event.target.value })}
+          onChange={(event) =>
+            onChange({ ...action, emoji: event.target.value })
+          }
+        />
+        <Field label="Message id">
+          <PathField
+            value={action.messageId}
+            placeholder="message.id"
+            actionsForLocal={rootActions}
+            size="sm"
+            onChange={(messageId) => onChange({ ...action, messageId })}
+          />
+        </Field>
+      </div>
+    );
+  }
+
+  if (action.type === "delete_message") {
+    return (
+      <div className="mt-1.5">
+        <Field label="Message id">
+          <PathField
+            value={action.messageId}
+            placeholder="message.id"
+            actionsForLocal={rootActions}
+            size="sm"
+            onChange={(messageId) => onChange({ ...action, messageId })}
+          />
+        </Field>
+      </div>
+    );
+  }
+
+  if (action.type === "add_member") {
+    return (
+      <div className="mt-1.5">
+        <TextInput
+          value={action.users}
+          placeholder="params.phone, 080…, 23480…, or +44…"
+          onChange={(event) =>
+            onChange({ ...action, users: event.target.value })
+          }
         />
       </div>
     );
   }
 
-  if (action.type === "delete_message") return null;
-
   if (
     action.type === "kick" ||
-    action.type === "add_member" ||
     action.type === "promote" ||
     action.type === "demote"
   ) {
@@ -605,15 +1219,38 @@ function ActionFields({
       <div className="mt-1.5">
         <TextInput
           value={action.users}
-          placeholder="user.id or expression"
-          onChange={(event) => onChange({ ...action, users: event.target.value })}
+          placeholder="params.UserMention, message.quotedUserId, or a WhatsApp id"
+          onChange={(event) =>
+            onChange({ ...action, users: event.target.value })
+          }
         />
       </div>
     );
   }
 
+  if (action.type === "get_link" || action.type === "reset_link") {
+    return (
+      <div className="mt-1.5">
+        <Field label="Store result (optional)">
+          <PathField
+            value={action.target}
+            placeholder="local.getLink"
+            actionsForLocal={rootActions}
+            size="sm"
+            onChange={(target) => onChange({ ...action, target })}
+          />
+        </Field>
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          Result is always in local.getLink as {"{ code, url }"}.
+        </p>
+      </div>
+    );
+  }
+
   if (action.type === "send_media") {
-    const mediaAssets = ctx.assets.filter((a) => a.type === "image" || a.type === "file");
+    const mediaAssets = ctx.assets.filter(
+      (a) => a.type === "image" || a.type === "file",
+    );
     return (
       <div className="mt-1.5 grid gap-2">
         <Field label="Image">
@@ -634,7 +1271,9 @@ function ActionFields({
           <TextArea
             value={action.text}
             className="min-h-14"
-            onChange={(event) => onChange({ ...action, text: event.target.value })}
+            onChange={(event) =>
+              onChange({ ...action, text: event.target.value })
+            }
           />
         </Field>
       </div>
@@ -660,7 +1299,10 @@ function ActionFields({
             value={action.valueType}
             placeholder="auto"
             onChange={(valueType) =>
-              onChange({ ...action, valueType: valueType as ParameterType | "" })
+              onChange({
+                ...action,
+                valueType: valueType as ParameterType | "",
+              })
             }
             options={[
               { value: "", label: "auto" },
@@ -673,7 +1315,7 @@ function ActionFields({
             <ExprTextField
               value={action.value}
               rootActions={rootActions}
-              placeholder={'{{params.n}} + 1'}
+              placeholder={"{{params.n}} + 1"}
               onChange={(value) => onChange({ ...action, value })}
             />
           </Field>
@@ -703,8 +1345,32 @@ function ActionFields({
           <ExprTextField
             value={action.userId}
             rootActions={rootActions}
-            placeholder={'{{params.user}}'}
+            placeholder={"{{params.user}}"}
             onChange={(userId) => onChange({ ...action, userId })}
+          />
+        </Field>
+        <Field label="Target">
+          <PathField
+            value={action.target}
+            placeholder="local.user"
+            actionsForLocal={rootActions}
+            size="sm"
+            onChange={(target) => onChange({ ...action, target })}
+          />
+        </Field>
+      </div>
+    );
+  }
+
+  if (action.type === "get_user_from_mention") {
+    return (
+      <div className="mt-1.5 grid gap-2 sm:grid-cols-2">
+        <Field label="Mention">
+          <ExprTextField
+            value={action.mention}
+            rootActions={rootActions}
+            placeholder={"{{params.userId}}"}
+            onChange={(mention) => onChange({ ...action, mention })}
           />
         </Field>
         <Field label="Target">
@@ -769,6 +1435,17 @@ function ActionFields({
     );
   }
 
+  if (action.type === "switch") {
+    return (
+      <SwitchActionFields
+        action={action}
+        depth={depth}
+        rootActions={rootActions}
+        onChange={onChange}
+      />
+    );
+  }
+
   if (action.type === "repeat") {
     return (
       <div className="mt-1.5 space-y-2">
@@ -778,13 +1455,17 @@ function ActionFields({
             min={0}
             max={100}
             value={action.count}
-            onChange={(event) => onChange({ ...action, count: Number(event.target.value) })}
+            onChange={(event) =>
+              onChange({ ...action, count: Number(event.target.value) })
+            }
           />
         </Field>
         <ActionList
           actions={action.actions}
           depth={depth + 1}
           rootActions={rootActions}
+          listId={listIdFor(action, "repeat")}
+          parentActionId={action.clientId}
           onChange={(actions) => onChange({ ...action, actions })}
         />
       </div>
@@ -798,8 +1479,10 @@ function ActionFields({
       hint: fn.id && fn.name ? fn.id : undefined,
     }));
     const selected =
-      ctx.functions.find((fn) => fn.name === action.functionName || fn.id === action.functionName) ??
-      null;
+      ctx.functions.find(
+        (fn) =>
+          fn.name === action.functionName || fn.id === action.functionName,
+      ) ?? null;
 
     return (
       <div className="mt-1.5 space-y-2">
@@ -809,10 +1492,16 @@ function ActionFields({
               <MenuSelect
                 size="sm"
                 ariaLabel="Function"
-                value={fnOptions.some((o) => o.value === action.functionName) ? action.functionName : ""}
+                value={
+                  fnOptions.some((o) => o.value === action.functionName)
+                    ? action.functionName
+                    : ""
+                }
                 placeholder="Choose"
                 onChange={(functionName) => {
-                  const fn = ctx.functions.find((f) => f.name === functionName || f.id === functionName);
+                  const fn = ctx.functions.find(
+                    (f) => f.name === functionName || f.id === functionName,
+                  );
                   const nextArgs =
                     fn && fn.parameters.length
                       ? fn.parameters
@@ -836,7 +1525,9 @@ function ActionFields({
                 placeholder="or type name"
                 spellCheck={false}
                 className="font-mono"
-                onChange={(event) => onChange({ ...action, functionName: event.target.value })}
+                onChange={(event) =>
+                  onChange({ ...action, functionName: event.target.value })
+                }
               />
             </div>
           ) : (
@@ -845,13 +1536,20 @@ function ActionFields({
               placeholder="function name"
               spellCheck={false}
               className="font-mono"
-              onChange={(event) => onChange({ ...action, functionName: event.target.value })}
+              onChange={(event) =>
+                onChange({ ...action, functionName: event.target.value })
+              }
             />
           )}
         </Field>
-        {selected && selected.parameters.length === 0 ? <Hint>No parameters</Hint> : null}
+        {selected && selected.parameters.length === 0 ? (
+          <Hint>No parameters</Hint>
+        ) : null}
         {action.args.map((arg, index) => (
-          <div key={arg.clientId} className="grid gap-1.5 sm:grid-cols-[7rem_1fr_auto]">
+          <div
+            key={arg.clientId}
+            className="grid gap-1.5 sm:grid-cols-[7rem_1fr_auto]"
+          >
             <TextInput
               value={arg.name}
               placeholder="arg"
@@ -860,7 +1558,9 @@ function ActionFields({
               onChange={(event) =>
                 onChange({
                   ...action,
-                  args: patchAt(action.args, index, { name: event.target.value }),
+                  args: patchAt(action.args, index, {
+                    name: event.target.value,
+                  }),
                 })
               }
             />
@@ -868,12 +1568,17 @@ function ActionFields({
               value={arg.value}
               rootActions={rootActions}
               onChange={(value) =>
-                onChange({ ...action, args: patchAt(action.args, index, { value }) })
+                onChange({
+                  ...action,
+                  args: patchAt(action.args, index, { value }),
+                })
               }
             />
             <SecondaryButton
               type="button"
-              onClick={() => onChange({ ...action, args: removeAt(action.args, index) })}
+              onClick={() =>
+                onChange({ ...action, args: removeAt(action.args, index) })
+              }
             >
               ×
             </SecondaryButton>
@@ -884,13 +1589,18 @@ function ActionFields({
           onClick={() =>
             onChange({
               ...action,
-              args: [...action.args, { clientId: clientId(), name: "", value: literal("") }],
+              args: [
+                ...action.args,
+                { clientId: clientId(), name: "", value: literal("") },
+              ],
             })
           }
         >
           Add argument
         </SecondaryButton>
-        <Hint>Args → params.* inside the function. Return value → local._return</Hint>
+        <Hint>
+          Args → params.* inside the function. Return value → local._return
+        </Hint>
       </div>
     );
   }
@@ -914,7 +1624,10 @@ function ActionFields({
           rootActions={rootActions}
           onChange={(value) => onChange({ ...action, value })}
         />
-        <SecondaryButton type="button" onClick={() => onChange({ ...action, value: null })}>
+        <SecondaryButton
+          type="button"
+          onClick={() => onChange({ ...action, value: null })}
+        >
           Clear value
         </SecondaryButton>
       </div>
@@ -989,7 +1702,7 @@ export function ExpressionField({
       <ExprTextField
         value={value}
         rootActions={rootActions}
-        placeholder={preferNumber ? "1000" : '{{params.name}} > 5'}
+        placeholder={preferNumber ? "1000" : "{{params.name}} > 5"}
         onChange={onChange}
       />
     </Field>

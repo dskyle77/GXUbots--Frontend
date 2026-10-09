@@ -4,7 +4,7 @@ export type IssueSeverity = "warning" | "error";
 
 export type ConfigIssue = {
   severity: IssueSeverity;
-  tabId: "commands" | "functions" | "assets" | "variables";
+  tabId: "events" | "functions" | "assets" | "variables";
   itemClientId?: string;
   field?: string;
   message: string;
@@ -24,30 +24,24 @@ export function validateConfig(config: EditorConfig): ConfigIssue[] {
   );
 
   for (const pack of config.packs) {
-    for (const cmd of pack.commands) {
-      if (cmd.events.length === 0) {
-        issues.push({
-          severity: "warning",
-          tabId: "commands",
-          itemClientId: cmd.clientId,
-          field: "events",
-          message: `Command "${cmd.name || cmd.triggers[0] || "untitled"}" in pack "${pack.name}" has no events`,
-        });
-      }
-      const seen = new Set<string>();
-      for (const raw of cmd.parameters) {
-        const name = raw.trim();
-        if (!name) continue;
-        if (seen.has(name)) {
+    for (const group of pack.eventGroups ?? []) {
+      for (const handler of group.handlers) {
+        if (!handler.actions?.length) {
           issues.push({
             severity: "warning",
-            tabId: "commands",
-            itemClientId: cmd.clientId,
-            field: "parameters",
-            message: `Duplicate parameter "${name}" on command "${cmd.name || "untitled"}"`,
+            tabId: "events",
+            itemClientId: handler.clientId,
+            field: "actions",
+            message: `Handler "${handler.name || handler.id}" in pack "${pack.name}" has no actions`,
           });
         }
-        seen.add(name);
+        walkActions(handler.actions ?? [], {
+          issues,
+          tabId: "events",
+          itemClientId: handler.clientId,
+          fnKeys,
+          assetKeys,
+        });
       }
     }
 
@@ -59,18 +53,6 @@ export function validateConfig(config: EditorConfig): ConfigIssue[] {
         fnKeys,
         assetKeys,
       });
-    }
-
-    for (const cmd of pack.commands) {
-      for (const event of cmd.events) {
-        walkActions(event.actions, {
-          issues,
-          tabId: "commands",
-          itemClientId: cmd.clientId,
-          fnKeys,
-          assetKeys,
-        });
-      }
     }
   }
 

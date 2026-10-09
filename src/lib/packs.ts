@@ -14,6 +14,8 @@ export type ExposedVariable = {
   group: string;
   default: unknown;
   expose?: boolean;
+  label?: string;
+  description?: string;
 };
 
 export type PackSummary = {
@@ -24,10 +26,15 @@ export type PackSummary = {
   visibility: string;
   ownerId: string;
   version: string;
+  /** Price in kobo; 0 = free */
+  price_kobo?: number;
+  /** Marketplace accent color */
+  color?: string;
   exposedFunctions?: ExposedFunction[];
   exposedVariables?: ExposedVariable[];
   definition?: {
     dependencies?: { packId: string; version: string }[];
+    events?: unknown[];
     variables?: ExposedVariable[];
     functions?: ExposedFunction[];
   };
@@ -43,6 +50,7 @@ export type InstalledPack = {
   slug: string;
   name: string;
   latestVersion: string | null;
+  messageGroups?: { phase: string; handlerNames: string[] }[];
 };
 
 export function createPack(input: { slug: string; name: string; description?: string; visibility?: string }) {
@@ -57,7 +65,16 @@ export function publishPack(id: string, version: string) {
   return api<PackSummary>(`/api/packs/${id}/publish`, { method: "POST", body: JSON.stringify({ version }) });
 }
 
-export function updatePack(id: string, patch: { visibility?: string; description?: string; name?: string }) {
+export function updatePack(
+  id: string,
+  patch: {
+    visibility?: string;
+    description?: string;
+    name?: string;
+    price_kobo?: number;
+    color?: string;
+  },
+) {
   return api<PackSummary>(`/api/packs/${id}`, { method: "PATCH", body: JSON.stringify(patch) });
 }
 

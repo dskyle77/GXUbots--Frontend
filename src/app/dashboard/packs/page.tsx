@@ -3,15 +3,16 @@
 import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/components/AuthProvider";
 import { ChevronRight, Plus } from "lucide-react";
-import { DashboardShell } from "../../../components/dashboard/Shell";
-import { createPack, listOwnPacks, type PackSummary } from "../../../lib/packs";
-import { Button } from "../../../components/ui/button";
-import { Input } from "../../../components/ui/input";
-import { Field } from "../../../components/ui/field";
-import { Badge } from "../../../components/ui/badge";
-import { EmptyState } from "../../../components/ui/empty-state";
-import { SkeletonList } from "../../../components/ui/skeleton";
+import { DashboardShell } from "@/components/dashboard/Shell";
+import { createPack, listOwnPacks, type PackSummary } from "@/lib/packs";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Field } from "@/components/ui/field";
+import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
+import { SkeletonList } from "@/components/ui/skeleton";
 import {
   Dialog,
   DialogContent,
@@ -20,19 +21,20 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "../../../components/ui/dialog";
+} from "@/components/ui/dialog";
 
 function slugify(value: string) {
   return value
     .trim()
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/[^a-z0-9]+/g, "_")
     .replace(/^-+|-+$/g, "")
     .slice(0, 40);
 }
 
 export default function PacksPage() {
   const router = useRouter();
+  const { owner, loading: authLoading } = useAuth();
   const [packs, setPacks] = useState<PackSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState("");
@@ -43,13 +45,28 @@ export default function PacksPage() {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
+    if (!authLoading && owner && !owner.admin) {
+      router.replace("/dashboard/market");
+    }
+  }, [authLoading, owner, router]);
+
+  useEffect(() => {
+    if (!owner?.admin) return;
     listOwnPacks()
       .then(setPacks)
       .catch((err: unknown) =>
         setError(err instanceof Error ? err.message : "Could not load packs"),
       )
       .finally(() => setLoading(false));
-  }, []);
+  }, [owner?.admin]);
+
+  if (authLoading || (owner && !owner.admin)) {
+    return (
+      <DashboardShell title="My packs">
+        <p className="text-sm text-muted-foreground">Redirecting…</p>
+      </DashboardShell>
+    );
+  }
 
   async function onCreate(event: FormEvent) {
     event.preventDefault();
@@ -58,7 +75,7 @@ export default function PacksPage() {
     try {
       const pack = await createPack({
         name: name.trim(),
-        slug: (slug.trim() || slugify(name)).trim(),
+        slug: slug.trim(),
       });
       setOpen(false);
       router.push(`/dashboard/packs/${pack.id}`);
@@ -100,7 +117,8 @@ export default function PacksPage() {
               <DialogHeader>
                 <DialogTitle>New pack</DialogTitle>
                 <DialogDescription>
-                  A pack holds commands, functions, variables, and assets you can install on bots.
+                  A pack holds event handlers, functions, variables, and assets
+                  you can install on bots.
                 </DialogDescription>
               </DialogHeader>
               <div className="mt-4 space-y-3">
@@ -117,15 +135,18 @@ export default function PacksPage() {
                     autoFocus
                   />
                 </Field>
-                <Field label="Slug" hint="Unique URL id; hard to change after publish">
+                <Field
+                  label="Slug"
+                  hint="Unique URL id; hard to change after publish"
+                >
                   <Input
                     value={slug}
                     onChange={(event) => {
                       setSlugTouched(true);
-                      setSlug(slugify(event.target.value));
+                      setSlug(event.target.value);
                     }}
                     required
-                    placeholder="moderation-tools"
+                    placeholder="moderation_tools"
                     className="font-mono"
                   />
                 </Field>
@@ -136,7 +157,11 @@ export default function PacksPage() {
                 ) : null}
               </div>
               <DialogFooter className="mt-6">
-                <Button type="button" variant="secondary" onClick={() => setOpen(false)}>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setOpen(false)}
+                >
                   Cancel
                 </Button>
                 <Button type="submit" loading={creating}>
@@ -153,7 +178,7 @@ export default function PacksPage() {
       ) : packs.length === 0 ? (
         <EmptyState
           title="No packs yet"
-          description="Create a pack, edit commands in the editor, then install it on a bot."
+          description="Create a pack, edit event handlers in the editor, then install it on a bot."
           action={
             <Button onClick={() => setOpen(true)}>
               <Plus className="size-4" />
@@ -167,13 +192,19 @@ export default function PacksPage() {
             <li key={pack.id}>
               <Link
                 href={`/dashboard/packs/${pack.id}`}
-                className="flex items-center gap-3 px-1 py-3.5 transition-colors duration-150 hover:bg-[var(--color-hover)]"
+                className="flex items-center gap-3 px-1 py-3.5 transition-colors duration-150 hover:bg-hover"
               >
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-foreground">{pack.name}</p>
-                  <p className="truncate text-xs text-muted-foreground">{pack.slug}</p>
+                  <p className="truncate text-sm font-medium text-foreground">
+                    {pack.name}
+                  </p>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {pack.slug}
+                  </p>
                 </div>
-                <Badge variant={pack.visibility === "public" ? "primary" : "default"}>
+                <Badge
+                  variant={pack.visibility === "public" ? "primary" : "default"}
+                >
                   {pack.visibility ?? "private"}
                 </Badge>
                 <Badge variant="default">{pack.version}</Badge>

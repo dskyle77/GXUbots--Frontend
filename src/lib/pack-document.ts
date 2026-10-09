@@ -2,14 +2,25 @@ export type PackAction = {
   type: string;
   actions?: PackAction[];
   elseActions?: PackAction[];
+  defaultActions?: PackAction[];
+  cases?: { match?: unknown; actions?: PackAction[] }[];
+  target?: string;
+  function?: string;
   [key: string]: unknown;
 };
 
-export type PackCommand = {
+export type PackHandler = {
+  id: string;
   name: string;
-  triggers: string[];
-  parameters?: string[];
-  events: { id: string; name: string; actions: PackAction[] }[];
+  filter: { kind: string; [key: string]: unknown };
+  actions: PackAction[];
+};
+
+export type PackEventGroup = {
+  event: string;
+  phase: "pre" | "handlers";
+  defaultPriority?: number;
+  handlers: PackHandler[];
 };
 
 export type PackFunction = {
@@ -32,7 +43,7 @@ export type PackVariable = {
 
 export type PackDocument = {
   dependencies: { packId: string; version: string }[];
-  commands: PackCommand[];
+  events: PackEventGroup[];
   functions: PackFunction[];
   assets: { id: string; name: string; type: string; [key: string]: unknown }[];
   variables: PackVariable[];
@@ -53,20 +64,23 @@ export const ACTION_LABELS: Record<string, string> = {
   set_variable: "Set variable",
   get_asset: "Get asset",
   get_user: "Get user",
+  get_user_from_mention: "Get user from mention",
   get_type: "Get type",
   wait: "Wait",
   if: "If",
+  switch: "Switch",
   repeat: "Repeat",
   break: "Break",
   continue: "Continue",
   call_function: "Call function",
   return: "Return",
+  stop_event: "Stop event",
 };
 
 export const QUOTED_PATHS = ["message.quotedMessageId", "message.quotedUserId", "message.quotedText"];
 
 export function emptyDocument(): PackDocument {
-  return { dependencies: [], commands: [], functions: [], assets: [], variables: [] };
+  return { dependencies: [], events: [], functions: [], assets: [], variables: [] };
 }
 
 export function loadDocument(raw: string): PackDocument {
@@ -120,9 +134,11 @@ export function blankAction(type: string): PackAction {
   if (type === "set_variable") return { type, target: "local.value", value: "" };
   if (type === "get_asset") return { type, asset: "" };
   if (type === "get_user") return { type, userId: "user.id" };
+  if (type === "get_user_from_mention") return { type, mention: "params.userId" };
   if (type === "get_type") return { type, value: "" };
   if (type === "wait") return { type, duration: { type: "literal", value: 1 } };
   if (type === "if") return { type, condition: { type: "literal", value: true }, actions: [], elseActions: [] };
+  if (type === "switch") return { type, value: { type: "literal", value: "" }, cases: [{ match: { type: "literal", value: "" }, actions: [] }], defaultActions: [] };
   if (type === "repeat") return { type, count: 1, actions: [] };
   if (type === "call_function") return { type, function: "" };
   if (type === "return") return { type };
@@ -168,9 +184,16 @@ export function validateDocument(
   const issues: string[] = [];
   const known = new Set(doc.functions.map((fn) => fn.name));
   const depSlugs = new Set(dependencies.map((dep) => dep.slug));
-  for (const command of doc.commands) {
-    if (!command.triggers.some((trigger) => trigger.trim())) issues.push(`Command "${command.name}" has an empty trigger`);
-    for (const event of command.events) walk(event.actions, issues, known, depSlugs, dependencies, false);
+  for (const group of doc.events) {
+    for (const handler of group.handlers) {
+      if (handler.filter.kind === "command") {
+        const triggers = (handler.filter.triggers as string[] | undefined) ?? [];
+        if (!triggers.some((trigger) => String(trigger).trim())) {
+          issues.push(`Handler "${handler.name}" has an empty trigger`);
+        }
+      }
+      walk(handler.actions, issues, known, depSlugs, dependencies, false);
+    }
   }
   for (const fn of doc.functions) walk(fn.actions, issues, known, depSlugs, dependencies, fn.kind === "value");
   return issues;
@@ -187,6 +210,7 @@ function walk(
   for (const action of actions) {
     if (action.type === "send_message" && !action.text) issues.push("Send message needs text");
     if (action.type === "get_user" && !action.userId) issues.push("Get user needs a user id");
+    if (action.type === "get_user_from_mention" && !action.mention) issues.push("Get user from mention needs a mention");
     if (action.type === "call_function" && !action.function) issues.push("Call function needs a target");
     if (typeof action.function === "string" && action.function.includes(".")) {
       const [slug, name] = action.function.split(".");
@@ -203,7 +227,15 @@ function walk(
     if (inValue && action.type === "set_variable" && /^(chat|user|global|session)\./.test(String(action.target ?? ""))) {
       issues.push("Value function cannot write saved variables");
     }
-    if (action.actions) walk(action.actions, issues, known, depSlugs, dependencies, inValue);
-    if (action.elseActions) walk(action.elseActions, issues, known, depSlugs, dependencies, inValue);
+    if (Array.isArray(action.actions)) walk(action.actions, issues, known, depSlugs, dependencies, inValue);
+    if (Array.isArray(action.elseActions)) walk(action.elseActions, issues, known, depSlugs, dependencies, inValue);
+    if (Array.isArray(action.defaultActions)) walk(action.defaultActions, issues, known, depSlugs, dependencies, inValue);
+    if (Array.isArray(action.cases)) {
+      for (const item of action.cases) {
+        if (item && typeof item === "object" && Array.isArray((item as { actions?: unknown }).actions)) {
+          walk((item as { actions: PackAction[] }).actions, issues, known, depSlugs, dependencies, inValue);
+        }
+      }
+    }
   }
 }

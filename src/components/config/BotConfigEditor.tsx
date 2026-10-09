@@ -7,7 +7,6 @@ import {
   getPack,
   installPack,
   listInstalledPacks,
-  listOwnPacks,
   listPublicPacks,
   uninstallPack,
   updateInstalledPack,
@@ -38,6 +37,7 @@ import {
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
 import { toast } from "../ui/toast";
+import { BotEventPipeline } from "./BotEventPipeline";
 
 export function BotConfigEditor({ botId }: { botId: string }) {
   const [installed, setInstalled] = useState<InstalledPack[]>([]);
@@ -61,11 +61,8 @@ export function BotConfigEditor({ botId }: { botId: string }) {
     setError("");
     setBusy(pack.id);
     try {
-      const result = await installPack(
-        botId,
-        pack.id,
-        pack.version === "draft" ? "draft" : undefined,
-      );
+      // Always install latest published — drafts are admin-only on the API
+      const result = await installPack(botId, pack.id);
       const sheets = await Promise.all(result.added.map((item) => getPack(item.packId)));
       setAdding(false);
       const withSettings = sheets.find((item) => exposedVariables(item).length > 0);
@@ -96,7 +93,7 @@ export function BotConfigEditor({ botId }: { botId: string }) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">
-          Install packs and configure the values they expose.
+          Install packs from the Market and configure their settings.
         </p>
         <Button onClick={() => setAdding(true)}>
           <Plus className="size-4" />
@@ -113,7 +110,7 @@ export function BotConfigEditor({ botId }: { botId: string }) {
       {installed.length === 0 ? (
         <EmptyState
           title="No packs installed"
-          description="Add a pack from My packs or Market to give this bot commands."
+          description="Browse the Market and install a pack, then configure the settings it exposes."
           action={
             <Button onClick={() => setAdding(true)}>
               <Plus className="size-4" />
@@ -129,16 +126,13 @@ export function BotConfigEditor({ botId }: { botId: string }) {
               pack={pack}
               busy={busy === pack.packId}
               onUpdate={async () => {
-                const target =
-                  pack.version === "draft" ? "draft" : pack.latestVersion ?? undefined;
-                if (!target) return;
+                const target = pack.latestVersion ?? undefined;
+                if (!target || pack.version === "draft") return;
                 setBusy(pack.packId);
                 try {
                   await updateInstalledPack(botId, pack.packId, { version: target });
                   await reload();
-                  toast.success(
-                    pack.version === "draft" ? "Draft reloaded" : `Updated to ${target}`,
-                  );
+                  toast.success(`Updated to ${target}`);
                 } catch (err) {
                   setError(err instanceof Error ? err.message : "Could not update pack");
                 } finally {
@@ -179,6 +173,8 @@ export function BotConfigEditor({ botId }: { botId: string }) {
         onPick={onInstall}
       />
 
+      <BotEventPipeline botId={botId} installed={installed} />
+
       {settingsPack ? (
         <SettingsDialog
           botId={botId}
@@ -210,25 +206,28 @@ function PackRow({
   onSettings: () => void;
   onToggle: (enabled: boolean) => Promise<void>;
 }) {
-  const canUpdate = updateAvailable(pack.version, pack.latestVersion);
-  const isDraft = pack.version === "draft";
+  const canUpdate =
+    pack.version !== "draft" && updateAvailable(pack.version, pack.latestVersion);
 
   return (
     <li className="flex flex-wrap items-center gap-3 py-3.5 sm:flex-nowrap">
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <p className="truncate text-sm font-medium text-foreground">{pack.name}</p>
-          {canUpdate && !isDraft ? (
+          {canUpdate ? (
             <Badge variant="primary">Update {pack.latestVersion}</Badge>
           ) : null}
-          {isDraft ? <Badge variant="primary">Draft</Badge> : null}
           {!pack.enabled ? <Badge>Disabled</Badge> : null}
         </div>
         <p className="truncate text-xs text-muted-foreground">
-          {pack.slug} · {pack.version}
-          {typeof pack.priority === "number" ? ` · priority ${pack.priority}` : ""}
+          {pack.slug}
+          {pack.version && pack.version !== "draft" ? ` · v${pack.version}` : ""}
         </p>
       </div>
+
+      <Button variant="secondary" size="sm" disabled={busy} onClick={onSettings}>
+        Configure
+      </Button>
 
       <Switch
         checked={pack.enabled}
@@ -246,10 +245,10 @@ function PackRow({
         <DropdownMenuContent align="end">
           {canUpdate ? (
             <DropdownMenuItem onSelect={() => void onUpdate()}>
-              {isDraft ? "Reload draft" : `Update to ${pack.latestVersion}`}
+              Update to {pack.latestVersion}
             </DropdownMenuItem>
           ) : null}
-          <DropdownMenuItem onSelect={onSettings}>Settings</DropdownMenuItem>
+          <DropdownMenuItem onSelect={onSettings}>Configure</DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem danger onSelect={() => void onUninstall()}>
             Remove
@@ -280,13 +279,8 @@ function AddPackDialog({
   useEffect(() => {
     if (!open) return;
     setQuery("");
-    Promise.all([listOwnPacks(), listPublicPacks()])
-      .then(([own, pub]) => {
-        const seen = new Set<string>();
-        setPacks(
-          [...own, ...pub].filter((pack) => (seen.has(pack.id) ? false : (seen.add(pack.id), true))),
-        );
-      })
+    listPublicPacks()
+      .then(setPacks)
       .catch((err: unknown) =>
         setError(err instanceof Error ? err.message : "Could not load packs"),
       );
@@ -409,7 +403,9 @@ function SettingsDialog({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{pack.name}</DialogTitle>
-          <DialogDescription>Pack settings and priority.</DialogDescription>
+          <DialogDescription>
+            Configure exposed settings for this bot. Values are saved per install.
+          </DialogDescription>
         </DialogHeader>
         <div className="max-h-[60vh] space-y-4 overflow-y-auto py-1">
           <Field label="Priority" hint="Higher runs first when triggers collide">
@@ -460,9 +456,50 @@ function SettingField({
   value: string;
   onChange: (value: string) => void;
 }) {
+  const title = field.label?.trim() || field.name;
+  const help = field.description?.trim() || field.type;
+
+  if (field.type === "boolean") {
+    const isTrue = value === "true" || value === "1";
+    return (
+      <Field label={title} hint={help}>
+        <div
+          onClick={() => onChange(isTrue ? "false" : "true")}
+          className="flex h-9 cursor-pointer items-center justify-between rounded-md border border-white/10 bg-black/25 px-3 py-1.5 text-xs select-none hover:border-white/20 transition-colors"
+        >
+          <span className="font-mono text-xs font-medium text-white/90">
+            {isTrue ? "true" : "false"}
+          </span>
+          <Switch
+            checked={isTrue}
+            onCheckedChange={(checked) => onChange(checked ? "true" : "false")}
+          />
+        </div>
+      </Field>
+    );
+  }
+
   return (
-    <Field label={field.name} hint={field.type}>
-      <Input value={value} onChange={(event) => onChange(event.target.value)} />
+    <Field label={title} hint={help}>
+      <Input
+        type={field.type === "number" ? "number" : "text"}
+        value={value}
+        placeholder={
+          field.type === "array"
+            ? '["item1", "item2"]'
+            : field.type === "object"
+            ? '{"key": "value"}'
+            : field.type === "number"
+            ? "0"
+            : "value"
+        }
+        className={
+          field.type === "array" || field.type === "object" || field.type === "number"
+            ? "font-mono"
+            : ""
+        }
+        onChange={(event) => onChange(event.target.value)}
+      />
     </Field>
   );
 }
@@ -473,14 +510,19 @@ function coerce(
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const field of fields) {
-    const raw = values[field.name] ?? "";
+    const raw = values[field.name];
     if (field.type === "number") {
-      const n = Number(raw);
-      out[field.name] = Number.isFinite(n) ? n : 0;
+      const n = Number(raw ?? "");
+      out[field.name] = Number.isFinite(n) ? n : Number(field.default) || 0;
     } else if (field.type === "boolean") {
-      out[field.name] = raw === "true" || raw === "1";
+      // Empty / missing → keep the declared default (not force false)
+      if (raw === undefined || raw === "") {
+        out[field.name] = field.default === true || field.default === "true" || field.default === 1;
+      } else {
+        out[field.name] = raw === "true" || raw === "1";
+      }
     } else {
-      out[field.name] = raw;
+      out[field.name] = raw ?? (field.default == null ? "" : String(field.default));
     }
   }
   return out;

@@ -9,7 +9,7 @@ const steps = [
     number: "02",
     title: "Configure",
     description:
-      "Add commands, features, assets, and the behavior you want your bot to have.",
+      "Add event handlers, features, assets, and the behavior you want your bot to have.",
   },
   {
     number: "03",

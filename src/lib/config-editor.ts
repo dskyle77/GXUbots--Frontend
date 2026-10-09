@@ -1,6 +1,11 @@
+import type { EditorEventGroup, EditorFilter, EditorHandler, EventPhase, EventType } from "./event-system";
+import { eventTypes } from "./event-system";
+
 export type ParameterType = "string" | "number" | "boolean" | "array" | "object";
 export type VariableScope = "chat" | "user" | "global" | "session";
 export type AssetType = "json" | "text" | "image" | "file";
+
+export type { EditorEventGroup, EditorFilter, EditorHandler, EventPhase, EventType } from "./event-system";
 
 /** Mirrors backend Expression; clientId is editor-only and stripped on serialize. */
 export type UnaryOperator = "not" | "negative";
@@ -66,43 +71,46 @@ export type EditorAction =
     }
   | {
       clientId: string;
+      type: "get_user_from_mention";
+      mention: EditorExpression;
+      target: string;
+    }
+  | {
+      clientId: string;
       type: "get_type";
       value: EditorExpression;
       target: string;
     }
   | { clientId: string; type: "wait"; duration: EditorExpression }
   | { clientId: string; type: "if"; condition: EditorExpression; actions: EditorAction[]; elseActions: EditorAction[] }
+  | {
+      clientId: string;
+      type: "switch";
+      value: EditorExpression;
+      cases: { clientId: string; match: EditorExpression; actions: EditorAction[] }[];
+      defaultActions: EditorAction[];
+    }
   | { clientId: string; type: "repeat"; count: number; actions: EditorAction[] }
   | { clientId: string; type: "break" }
   | { clientId: string; type: "continue" }
   | { clientId: string; type: "stop_event" }
-  | { clientId: string; type: "reply_message"; text: string }
-  | { clientId: string; type: "react_message"; emoji: string }
-  | { clientId: string; type: "delete_message" }
+  | { clientId: string; type: "reply_message"; text: string; messageId: string }
+  | { clientId: string; type: "react_message"; emoji: string; messageId: string }
+  | { clientId: string; type: "delete_message"; messageId: string }
   | { clientId: string; type: "kick"; users: string }
   | { clientId: string; type: "add_member"; users: string }
   | { clientId: string; type: "promote"; users: string }
   | { clientId: string; type: "demote"; users: string }
+  /** Only admins can edit group info */
+  | { clientId: string; type: "lock_group" }
+  /** Everyone can edit group info */
+  | { clientId: string; type: "unlock_group" }
+  /** Fetch group invite into local.getLink { code, url } */
+  | { clientId: string; type: "get_link"; target: string }
+  /** Revoke invite; store new link in local.getLink { code, url } */
+  | { clientId: string; type: "reset_link"; target: string }
   | { clientId: string; type: "call_function"; functionName: string; args: { clientId: string; name: string; value: EditorExpression }[] }
   | { clientId: string; type: "return"; value: EditorExpression | null };
-
-export type EditorCommand = {
-  clientId: string;
-  name: string;
-  /** One or more triggers. Empty / "*" alone = catch-all. */
-  triggers: string[];
-  /** Parameter names only (max 5). Values auto-coerce string|number. */
-  parameters: string[];
-  /** Events run in order when this command matches. */
-  events: EditorEvent[];
-};
-
-export type EditorEvent = {
-  clientId: string;
-  id: string;
-  name: string;
-  actions: EditorAction[];
-};
 
 export const MAX_COMMAND_PARAMS = 5;
 
@@ -133,15 +141,19 @@ export type EditorVariable = {
   defaultValue: string;
   group: string;
   expose: boolean;
+  /** Human label on bot settings (falls back to name). */
+  label: string;
+  /** Help text under the setting on bot settings. */
+  description: string;
 };
 
 export type EditorPack = {
   clientId: string;
   id: string;
   name: string;
-  /** Higher priority runs first when triggers collide across packs. */
+  /** Higher priority runs first when pack groups collide across packs. */
   priority: number;
-  commands: EditorCommand[];
+  eventGroups: EditorEventGroup[];
   functions: EditorFunction[];
   assets: EditorAsset[];
   variables: EditorVariable[];
@@ -164,12 +176,18 @@ export const actionTypes = [
   "add_member",
   "promote",
   "demote",
+  "lock_group",
+  "unlock_group",
+  "get_link",
+  "reset_link",
   "set_variable",
   "get_asset",
   "get_user",
+  "get_user_from_mention",
   "get_type",
   "wait",
   "if",
+  "switch",
   "repeat",
   "break",
   "continue",
@@ -188,12 +206,18 @@ export const actionLabels: Record<(typeof actionTypes)[number], string> = {
   add_member: "Add member",
   promote: "Promote",
   demote: "Demote",
+  lock_group: "Lock group",
+  unlock_group: "Unlock group",
+  get_link: "Get invite link",
+  reset_link: "Reset invite link",
   set_variable: "Set variable",
   get_asset: "Get asset",
   get_user: "Get user",
+  get_user_from_mention: "Get user from mention",
   get_type: "Get type",
   wait: "Wait",
   if: "If",
+  switch: "Switch",
   repeat: "Repeat",
   break: "Break",
   continue: "Continue",
@@ -201,6 +225,54 @@ export const actionLabels: Record<(typeof actionTypes)[number], string> = {
   call_function: "Call function",
   return: "Return",
 };
+
+/** Grouped options for the action-type picker (search + sections). */
+export const actionTypeGroups: {
+  label: string;
+  types: (typeof actionTypes)[number][];
+}[] = [
+  {
+    label: "Messages",
+    types: [
+      "send_message",
+      "reply_message",
+      "react_message",
+      "delete_message",
+      "send_media",
+    ],
+  },
+  {
+    label: "Group",
+    types: [
+      "kick",
+      "add_member",
+      "promote",
+      "demote",
+      "lock_group",
+      "unlock_group",
+      "get_link",
+      "reset_link",
+    ],
+  },
+  {
+    label: "Data",
+    types: [
+      "set_variable",
+      "get_asset",
+      "get_user",
+      "get_user_from_mention",
+      "get_type",
+    ],
+  },
+  {
+    label: "Flow",
+    types: ["if", "switch", "repeat", "wait", "break", "continue", "stop_event"],
+  },
+  {
+    label: "Functions",
+    types: ["call_function", "return"],
+  },
+];
 
 export const parameterTypes: ParameterType[] = ["string", "number", "boolean", "array", "object"];
 export const variableScopes: VariableScope[] = ["chat", "user", "global", "session"];
@@ -273,16 +345,22 @@ export function blankAction(type: EditorAction["type"] = "send_message"): Editor
     case "send_message":
       return { clientId: id, type, text: "" };
     case "reply_message":
-      return { clientId: id, type, text: "" };
+      return { clientId: id, type, text: "", messageId: "message.id" };
     case "react_message":
-      return { clientId: id, type, emoji: "" };
+      return { clientId: id, type, emoji: "", messageId: "message.id" };
     case "delete_message":
-      return { clientId: id, type };
+      return { clientId: id, type, messageId: "message.id" };
     case "kick":
     case "add_member":
     case "promote":
     case "demote":
       return { clientId: id, type, users: "" };
+    case "lock_group":
+    case "unlock_group":
+      return { clientId: id, type };
+    case "get_link":
+    case "reset_link":
+      return { clientId: id, type, target: "" };
     case "send_media":
       return { clientId: id, type, text: "", image: "", file: "" };
     case "set_variable":
@@ -296,6 +374,13 @@ export function blankAction(type: EditorAction["type"] = "send_message"): Editor
         userId: variableExpr("message.quotedUserId"),
         target: "",
       };
+    case "get_user_from_mention":
+      return {
+        clientId: id,
+        type,
+        mention: variableExpr("params.userId"),
+        target: "",
+      };
     case "get_type":
       return {
         clientId: id,
@@ -307,6 +392,14 @@ export function blankAction(type: EditorAction["type"] = "send_message"): Editor
       return { clientId: id, type, duration: literal(1000) };
     case "if":
       return { clientId: id, type, condition: variableExpr(""), actions: [], elseActions: [] };
+    case "switch":
+      return {
+        clientId: id,
+        type,
+        value: variableExpr(""),
+        cases: [{ clientId: clientId(), match: literal(""), actions: [] }],
+        defaultActions: [],
+      };
     case "repeat":
       return { clientId: id, type, count: 1, actions: [] };
     case "break":
@@ -332,7 +425,7 @@ export function blankPack(name = "Pack"): EditorPack {
     id: newId("pack"),
     name,
     priority: 0,
-    commands: [],
+    eventGroups: [],
     functions: [],
     assets: [],
     variables: [],
@@ -357,12 +450,13 @@ export function parseConfig(raw: string, fallbackName: string): EditorConfig {
 
 function parsePack(value: unknown): EditorPack {
   const item = asRecord(value);
+  const priority = Number.isFinite(Number(item.priority)) ? Number(item.priority) : 0;
   return {
     clientId: clientId(),
     id: asString(item.id) || newId("pack"),
     name: asString(item.name) || "Pack",
-    priority: Number.isFinite(Number(item.priority)) ? Number(item.priority) : 0,
-    commands: asArray(item.commands).map(parseCommand),
+    priority,
+    eventGroups: asArray(item.events).map((g) => parseEventGroup(g, priority)),
     functions: asArray(item.functions).map(parseFunction),
     assets: asArray(item.assets).map(parseAsset),
     variables: asArray(item.variables).map(parseVariable),
@@ -383,7 +477,7 @@ function serializePack(pack: EditorPack) {
     id: pack.id.trim() || newId("pack"),
     name: pack.name.trim() || "Pack",
     priority: Number.isFinite(pack.priority) ? Math.trunc(pack.priority) : 0,
-    commands: pack.commands.map(serializeCommand),
+    events: pack.eventGroups.map(serializeEventGroup),
     functions: pack.functions.map(serializeFunction),
     assets: pack.assets.map(serializeAsset),
     variables: pack.variables.map(serializeVariable),
@@ -393,12 +487,84 @@ function serializePack(pack: EditorPack) {
   };
 }
 
-function parseCommand(value: unknown): EditorCommand {
+// ── Event system parse / serialize ─────────────────
+
+function parseEventGroup(value: unknown, fallbackPriority: number): EditorEventGroup {
   const item = asRecord(value);
+  const eventRaw = asString(item.event) || "message";
+  const event: EventType = (eventTypes as readonly string[]).includes(eventRaw)
+    ? (eventRaw as EventType)
+    : "message";
+  const phase: EventPhase = item.phase === "pre" ? "pre" : "handlers";
+  return {
+    clientId: clientId(),
+    event,
+    phase,
+    defaultPriority: Number.isFinite(Number(item.defaultPriority))
+      ? Number(item.defaultPriority)
+      : fallbackPriority,
+    handlers: asArray(item.handlers).map(parseHandler),
+  };
+}
+
+function serializeEventGroup(group: EditorEventGroup) {
+  // Pre-handlers and non-message events are action lists only — no command filter.
+  const filterless =
+    group.phase === "pre" ||
+    group.event === "user_joined" ||
+    group.event === "user_left";
+  return {
+    event: group.event,
+    phase: group.phase,
+    defaultPriority: group.defaultPriority,
+    handlers: group.handlers.map((h) => ({
+      id: h.id.trim() || newId("handler"),
+      name: h.name.trim() || h.id,
+      filter: filterless
+        ? { kind: "catch_all" as const }
+        : serializeFilter(h.filter),
+      actions: h.actions.map(serializeAction),
+    })),
+  };
+}
+
+function parseHandler(value: unknown): EditorHandler {
+  const item = asRecord(value);
+  return {
+    clientId: clientId(),
+    id: asString(item.id) || newId("handler"),
+    name: asString(item.name),
+    filter: parseFilter(item.filter),
+    actions: asArray(item.actions).map(parseAction).filter(Boolean) as EditorAction[],
+  };
+}
+
+function parseFilter(value: unknown): EditorFilter {
+  const item = asRecord(value);
+  const kind = asString(item.kind) || "command";
+  if (kind === "contains") {
+    return {
+      kind: "contains",
+      text: asString(item.text),
+      ...(item.caseSensitive === true ? { caseSensitive: true } : {}),
+    };
+  }
+  if (kind === "starts_with") {
+    return {
+      kind: "starts_with",
+      text: asString(item.text),
+      ...(item.caseSensitive === true ? { caseSensitive: true } : {}),
+    };
+  }
+  if (kind === "regex") {
+    return { kind: "regex", pattern: asString(item.pattern) };
+  }
+  if (kind === "catch_all") {
+    return { kind: "catch_all" };
+  }
   const triggers = asArray(item.triggers)
     .map((t) => String(t).trim())
-    .filter((t, i, arr) => arr.indexOf(t) === i);
-
+    .filter(Boolean);
   const parameters = asArray(item.parameters)
     .map((p) => {
       if (typeof p === "string") return p.trim();
@@ -409,44 +575,40 @@ function parseCommand(value: unknown): EditorCommand {
     })
     .filter(Boolean)
     .slice(0, MAX_COMMAND_PARAMS);
-
   return {
-    clientId: clientId(),
-    name: asString(item.name),
-    triggers,
+    kind: "command",
+    triggers: triggers.length ? triggers : ["/"],
     parameters,
-    events: asArray(item.events).map(parseEvent),
   };
 }
 
-function parseEvent(value: unknown): EditorEvent {
-  const item = asRecord(value);
-  return {
-    clientId: clientId(),
-    id: asString(item.id) || newId("event"),
-    name: asString(item.name),
-    actions: asArray(item.actions).map(parseAction).filter(Boolean) as EditorAction[],
-  };
-}
-
-/** One-liner signature: `/trigger param1 param2` (first token = primary trigger). */
-export function commandSignature(command: EditorCommand): string {
-  const primary = command.triggers[0]?.trim() ?? "";
-  const params = command.parameters.map((p) => p.trim()).filter(Boolean).slice(0, MAX_COMMAND_PARAMS);
-  return [primary, ...params].filter(Boolean).join(" ");
-}
-
-/** Parse one-liner into primary trigger + param names (max 5). Keeps extra triggers. */
-export function applyCommandSignature(
-  command: EditorCommand,
-  line: string,
-): Pick<EditorCommand, "triggers" | "parameters"> {
-  const tokens = line.trim().split(/\s+/).filter(Boolean);
-  const primary = tokens[0] ?? "";
-  const parameters = tokens.slice(1, 1 + MAX_COMMAND_PARAMS);
-  const rest = command.triggers.slice(1).filter((t) => t.trim() && t.trim() !== primary);
-  const triggers = primary ? [primary, ...rest] : rest.length ? rest : [];
-  return { triggers, parameters };
+function serializeFilter(filter: EditorFilter): Record<string, unknown> {
+  switch (filter.kind) {
+    case "command":
+      return {
+        kind: "command",
+        triggers: filter.triggers.map((t) => t.trim()).filter(Boolean),
+        ...(filter.parameters.length
+          ? { parameters: filter.parameters.map((p) => p.trim()).filter(Boolean).slice(0, MAX_COMMAND_PARAMS) }
+          : {}),
+      };
+    case "contains":
+      return {
+        kind: "contains",
+        text: filter.text,
+        ...(filter.caseSensitive ? { caseSensitive: true } : {}),
+      };
+    case "starts_with":
+      return {
+        kind: "starts_with",
+        text: filter.text,
+        ...(filter.caseSensitive ? { caseSensitive: true } : {}),
+      };
+    case "regex":
+      return { kind: "regex", pattern: filter.pattern };
+    case "catch_all":
+      return { kind: "catch_all" };
+  }
 }
 
 function parseFunction(value: unknown): EditorFunction {
@@ -488,10 +650,12 @@ function parseVariable(value: unknown): EditorVariable {
     defaultValue: item.default === undefined ? "" : stringifyValue(item.default),
     group: asString(item.group),
     expose: item.expose === true,
+    label: asString(item.label),
+    description: asString(item.description),
   };
 }
 
-function parseAction(value: unknown): EditorAction | null {
+export function parseAction(value: unknown): EditorAction | null {
   const item = asRecord(value);
   const type = asString(item.type);
   const id = clientId();
@@ -499,21 +663,34 @@ function parseAction(value: unknown): EditorAction | null {
     case "send_message":
       return { clientId: id, type, text: asString(item.text) };
     case "reply_message":
-      return { clientId: id, type, text: asString(item.text) };
+      return { clientId: id, type, text: asString(item.text), messageId: messageIdOf(item.messageId) };
     case "react_message":
-      return { clientId: id, type, emoji: asString(item.emoji) };
+      return { clientId: id, type, emoji: asString(item.emoji), messageId: messageIdOf(item.messageId) };
     case "delete_message":
-      return { clientId: id, type };
+      return { clientId: id, type, messageId: messageIdOf(item.messageId) };
     case "kick":
     case "add_member":
     case "promote":
     case "demote":
-      return { clientId: id, type, users: asString(item.users) };
+      return { clientId: id, type, users: rewriteQuotedPath(asString(item.users)) };
     case "group_participants": {
       const groupAction = asString(item.action);
       const type = groupAction === "add" ? "add_member" : groupAction === "promote" ? "promote" : groupAction === "demote" ? "demote" : "kick";
-      return { clientId: id, type, users: asString(item.users) };
+      return { clientId: id, type, users: rewriteQuotedPath(asString(item.users)) };
     }
+    case "group_setting": {
+      const setting = asString(item.setting);
+      if (setting === "locked") return { clientId: id, type: "lock_group" };
+      if (setting === "unlocked") return { clientId: id, type: "unlock_group" };
+      // announcement settings not exposed in the form editor yet
+      return null;
+    }
+    case "lock_group":
+    case "unlock_group":
+      return { clientId: id, type };
+    case "get_link":
+    case "reset_link":
+      return { clientId: id, type, target: asString(item.target) };
     case "send_media":
       return { clientId: id, type, text: asString(item.text), image: asString(item.image), file: asString(item.file) };
     case "set_variable": {
@@ -541,6 +718,19 @@ function parseAction(value: unknown): EditorAction | null {
         target: asString(item.target),
       };
     }
+    case "get_user_from_mention": {
+      const mentionRaw = item.mention;
+      const mention =
+        typeof mentionRaw === "string"
+          ? variableExpr(mentionRaw)
+          : parseExpression(mentionRaw);
+      return {
+        clientId: id,
+        type,
+        mention,
+        target: asString(item.target),
+      };
+    }
     case "get_type": {
       const valueRaw = item.value;
       const value =
@@ -563,6 +753,21 @@ function parseAction(value: unknown): EditorAction | null {
         condition: parseExpression(item.condition),
         actions: asArray(item.actions).map(parseAction).filter(Boolean) as EditorAction[],
         elseActions: asArray(item.elseActions).map(parseAction).filter(Boolean) as EditorAction[],
+      };
+    case "switch":
+      return {
+        clientId: id,
+        type,
+        value: parseExpression(item.value),
+        cases: asArray(item.cases).map((entry) => {
+          const row = asRecord(entry);
+          return {
+            clientId: clientId(),
+            match: parseExpression(row.match),
+            actions: asArray(row.actions).map(parseAction).filter(Boolean) as EditorAction[],
+          };
+        }),
+        defaultActions: asArray(item.defaultActions).map(parseAction).filter(Boolean) as EditorAction[],
       };
     case "repeat":
       return {
@@ -593,6 +798,20 @@ function parseAction(value: unknown): EditorAction | null {
   }
 }
 
+const QUOTED_PATH_ALIASES: Record<string, string> = {
+  "message.replyId": "message.quotedMessageId",
+  "message.replySender": "message.quotedUserId",
+  "message.replyText": "message.quotedText",
+  "local.replyId": "message.quotedMessageId",
+  "local.replySender": "message.quotedUserId",
+  "local.replyText": "message.quotedText",
+};
+
+/** Old picker names. Backend only exposes message.quotedMessageId / quotedUserId / quotedText. */
+export function rewriteQuotedPath(value: string): string {
+  return QUOTED_PATH_ALIASES[value] ?? value;
+}
+
 export function parseExpression(value: unknown): EditorExpression {
   const item = asRecord(value);
   if (item.type === "call") {
@@ -604,7 +823,7 @@ export function parseExpression(value: unknown): EditorExpression {
     };
   }
   if (item.type === "variable") {
-    return { clientId: clientId(), type: "variable", path: asString(item.path) };
+    return { clientId: clientId(), type: "variable", path: rewriteQuotedPath(asString(item.path)) };
   }
   if (item.type === "binary") {
     const op = asString(item.operator) as BinaryOperator;
@@ -659,28 +878,6 @@ export function serializeExpression(expr: EditorExpression): Record<string, unkn
   }
 }
 
-function serializeCommand(command: EditorCommand) {
-  const triggers = command.triggers.map((t) => t.trim()).filter(Boolean);
-  const parameters = command.parameters
-    .map((p) => p.trim())
-    .filter(Boolean)
-    .slice(0, MAX_COMMAND_PARAMS);
-  return {
-    name: command.name.trim() || triggers[0] || "command",
-    triggers,
-    ...(parameters.length ? { parameters } : {}),
-    events: command.events.map(serializeEvent),
-  };
-}
-
-function serializeEvent(event: EditorEvent) {
-  return {
-    id: event.id.trim() || newId("event"),
-    name: event.name.trim() || "event",
-    actions: event.actions.map(serializeAction),
-  };
-}
-
 function serializeFunction(fn: EditorFunction) {
   return {
     id: fn.id.trim(),
@@ -706,6 +903,8 @@ function serializeAsset(asset: EditorAsset) {
 
 function serializeVariable(variable: EditorVariable) {
   const group = variable.group.trim();
+  const label = variable.label.trim();
+  const description = variable.description.trim();
   return {
     name: variable.name.trim(),
     scope: variable.scope,
@@ -715,6 +914,8 @@ function serializeVariable(variable: EditorVariable) {
       : {}),
     ...(group ? { group } : {}),
     ...(variable.expose ? { expose: true } : {}),
+    ...(label ? { label } : {}),
+    ...(description ? { description } : {}),
   };
 }
 
@@ -734,16 +935,28 @@ export function variableGroups(variables: EditorVariable[]) {
   return groups;
 }
 
+function messageIdOf(value: unknown): string {
+  if (typeof value === "string") return value;
+  const item = asRecord(value);
+  if (item.type === "variable") return asString(item.path);
+  return "message.id";
+}
+
+function messageIdField(messageId: string): { messageId?: string } {
+  const id = messageId.trim();
+  return id ? { messageId: id } : {};
+}
+
 function serializeAction(action: EditorAction): Record<string, unknown> {
   switch (action.type) {
     case "send_message":
       return { type: action.type, text: action.text };
     case "reply_message":
-      return { type: action.type, text: action.text };
+      return { type: action.type, text: action.text, ...messageIdField(action.messageId) };
     case "react_message":
-      return { type: action.type, emoji: action.emoji };
+      return { type: action.type, emoji: action.emoji, ...messageIdField(action.messageId) };
     case "delete_message":
-      return { type: action.type };
+      return { type: action.type, ...messageIdField(action.messageId) };
     case "kick":
       return { type: "group_participants", action: "remove", users: action.users };
     case "add_member":
@@ -752,6 +965,16 @@ function serializeAction(action: EditorAction): Record<string, unknown> {
       return { type: "group_participants", action: "promote", users: action.users };
     case "demote":
       return { type: "group_participants", action: "demote", users: action.users };
+    case "lock_group":
+      return { type: "group_setting", setting: "locked" };
+    case "unlock_group":
+      return { type: "group_setting", setting: "unlocked" };
+    case "get_link":
+    case "reset_link":
+      return {
+        type: action.type,
+        ...(action.target.trim() ? { target: action.target.trim() } : {}),
+      };
     case "send_media":
       return {
         type: action.type,
@@ -774,6 +997,12 @@ function serializeAction(action: EditorAction): Record<string, unknown> {
         userId: serializeExpression(action.userId),
         ...(action.target.trim() ? { target: action.target.trim() } : {}),
       };
+    case "get_user_from_mention":
+      return {
+        type: action.type,
+        mention: serializeExpression(action.mention),
+        ...(action.target.trim() ? { target: action.target.trim() } : {}),
+      };
     case "get_type":
       return {
         type: action.type,
@@ -788,6 +1017,16 @@ function serializeAction(action: EditorAction): Record<string, unknown> {
         condition: serializeExpression(action.condition),
         actions: action.actions.map(serializeAction),
         ...(action.elseActions.length ? { elseActions: action.elseActions.map(serializeAction) } : {}),
+      };
+    case "switch":
+      return {
+        type: action.type,
+        value: serializeExpression(action.value),
+        cases: action.cases.map((item) => ({
+          match: serializeExpression(item.match),
+          actions: item.actions.map(serializeAction),
+        })),
+        ...(action.defaultActions.length ? { defaultActions: action.defaultActions.map(serializeAction) } : {}),
       };
     case "repeat":
       return { type: action.type, count: action.count, actions: action.actions.map(serializeAction) };

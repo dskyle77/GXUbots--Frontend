@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
+import { useAuth } from "../../../../components/AuthProvider";
 import { ArrowLeft } from "lucide-react";
 import { DashboardShell } from "../../../../components/dashboard/Shell";
 import { ConfigEditor } from "../../../../components/config/ConfigEditor";
@@ -11,16 +12,25 @@ import { parseConfig, type EditorConfig } from "../../../../lib/config-editor";
 
 export default function PackPage() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
+  const { owner, loading: authLoading } = useAuth();
   const [pack, setPack] = useState<PackSummary | null>(null);
   const [config, setConfig] = useState<EditorConfig | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
+    if (!authLoading && owner && !owner.admin) {
+      router.replace("/dashboard/market");
+    }
+  }, [authLoading, owner, router]);
+
+  useEffect(() => {
+    if (!owner?.admin) return;
     getPack(params.id)
       .then((next) => {
         setPack(next);
         const definition = next.definition ?? {
-          commands: [],
+          events: [],
           functions: [],
           assets: [],
           variables: [],
@@ -38,7 +48,15 @@ export default function PackPage() {
       .catch((err: unknown) =>
         setError(err instanceof Error ? err.message : "Could not load pack"),
       );
-  }, [params.id]);
+  }, [params.id, owner?.admin]);
+
+  if (authLoading || (owner && !owner.admin)) {
+    return (
+      <DashboardShell title="Pack">
+        <p className="text-sm text-muted-foreground">Redirecting…</p>
+      </DashboardShell>
+    );
+  }
 
   return (
     <DashboardShell
@@ -53,6 +71,7 @@ export default function PackPage() {
           My packs
         </Link>
       }
+      fill
     >
       {error ? (
         <p role="alert" className="text-sm text-destructive">
@@ -68,6 +87,8 @@ export default function PackPage() {
           initial={config}
           dependencies={pack.definition?.dependencies ?? []}
           initialVisibility={pack.visibility}
+          initialPriceKobo={Number(pack.price_kobo ?? 0)}
+          initialColor={pack.color?.trim() || "#8b5cf6"}
         />
       ) : null}
     </DashboardShell>

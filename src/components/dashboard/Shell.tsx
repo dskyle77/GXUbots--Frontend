@@ -8,9 +8,8 @@ import { useAuth } from "../AuthProvider";
 import { Button } from "../ui/button";
 import { cn } from "../../lib/cn";
 
-const links = [
+const baseLinks = [
   { label: "Bots", href: "/dashboard" },
-  { label: "My packs", href: "/dashboard/packs" },
   { label: "Market", href: "/dashboard/market" },
 ];
 
@@ -19,11 +18,14 @@ export function DashboardShell({
   description,
   actions,
   children,
+  fill = false,
 }: {
   title: string;
   description?: string;
   actions?: React.ReactNode;
   children: React.ReactNode;
+  /** When true, content fills the viewport; children manage their own scroll. Title bar is compact. */
+  fill?: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -70,11 +72,17 @@ export function DashboardShell({
         <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-sm font-bold text-white">
           GX
         </div>
-        <span className="text-lg font-semibold tracking-tight text-foreground">GXUbots</span>
+        <span className="text-lg font-semibold tracking-tight text-foreground">
+          GXUbots
+        </span>
       </Link>
 
       <nav className="mt-8 flex flex-col gap-0.5">
-        {links.map((item) => (
+        {[
+          ...baseLinks.slice(0, 1),
+          ...(owner.admin ? [{ label: "My packs", href: "/dashboard/packs" }] : []),
+          ...baseLinks.slice(1),
+        ].map((item) => (
           <Link
             key={item.href}
             href={item.href}
@@ -104,7 +112,9 @@ export function DashboardShell({
       </nav>
 
       <div className="mt-auto border-t border-border pt-4">
-        <p className="truncate text-sm font-medium text-foreground">{owner.name}</p>
+        <p className="truncate text-sm font-medium text-foreground">
+          {owner.name}
+        </p>
         <p className="truncate text-xs text-muted-foreground">{owner.email}</p>
         <button
           type="button"
@@ -118,9 +128,9 @@ export function DashboardShell({
   );
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="flex h-dvh flex-col overflow-hidden bg-background">
       {/* Mobile top bar */}
-      <div className="flex items-center justify-between border-b border-border px-4 py-3 md:hidden">
+      <div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-3 md:hidden">
         <Link href="/" className="flex items-center gap-2">
           <div className="flex size-7 items-center justify-center rounded-md bg-primary text-xs font-bold text-white">
             GX
@@ -152,22 +162,58 @@ export function DashboardShell({
         </div>
       ) : null}
 
-      <div className="mx-auto grid min-h-[calc(100vh-3.25rem)] max-w-6xl md:min-h-screen md:grid-cols-[220px_1fr]">
-        <aside className="hidden flex-col border-r border-border px-5 py-6 md:flex">{nav}</aside>
+      <div className="flex min-h-0 flex-1">
+        {/* App sidebar — fixed, never scrolls with content */}
+        <aside className="hidden w-[220px] shrink-0 flex-col border-r border-border px-5 py-6 md:flex">
+          {nav}
+        </aside>
 
-        <div className="px-4 py-6 sm:px-8 sm:py-8">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        {/* Content column */}
+        <div
+          className={cn(
+            "flex min-h-0 min-w-0 flex-1 flex-col",
+            fill ? "overflow-hidden" : "overflow-y-auto",
+          )}
+        >
+          {/* Page header — compact when fill so editor gets the space */}
+          <div
+            className={cn(
+              "flex shrink-0 items-start justify-between gap-3 border-b border-border",
+              fill ? "px-4 py-2.5 sm:px-6" : "px-4 py-6 sm:px-8 sm:py-8",
+            )}
+          >
             <div className="min-w-0">
-              <h1 className="text-2xl font-semibold tracking-tight text-foreground">{title}</h1>
-              {description ? (
-                <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+              <h1
+                className={cn(
+                  "font-semibold tracking-tight text-foreground",
+                  fill ? "text-base" : "text-2xl",
+                )}
+              >
+                {title}
+              </h1>
+              {description && !fill ? (
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {description}
+                </p>
+              ) : description && fill ? (
+                <p className="text-xs text-muted-foreground">{description}</p>
               ) : null}
             </div>
             {actions ? (
-              <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>
+              <div className="flex shrink-0 flex-wrap items-center gap-2">
+                {actions}
+              </div>
             ) : null}
           </div>
-          <div className="mt-6">{children}</div>
+
+          <div
+            className={cn(
+              "min-h-0 min-w-0",
+              fill ? "flex flex-1 flex-col overflow-hidden" : "px-4 py-6 sm:px-8",
+            )}
+          >
+            {children}
+          </div>
         </div>
       </div>
     </div>

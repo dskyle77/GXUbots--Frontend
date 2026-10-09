@@ -1,7 +1,6 @@
 import type {
   EditorAction,
   EditorAsset,
-  EditorCommand,
   EditorFunction,
   EditorVariable,
   ParameterType,
@@ -34,19 +33,24 @@ const BUILTINS: PathOption[] = [
   { path: "message.id", group: "builtin" },
   { path: "message.sender", group: "builtin" },
   {
-    path: "message.replyId",
+    path: "message.quotedMessageId",
     group: "builtin",
     hint: "id of replied-to message, or null",
   },
   {
-    path: "message.replySender",
+    path: "message.quotedUserId",
     group: "builtin",
-    hint: "author of reply; bot.id if reply to bot; null if no reply",
+    hint: "author of the quote; bot.id if reply to bot; WhatsApp user id otherwise; null if no reply",
   },
   {
-    path: "message.replyText",
+    path: "message.quotedText",
     group: "builtin",
     hint: "text of replied-to message when available",
+  },
+  {
+    path: "message.mentions",
+    group: "builtin",
+    hint: "JIDs of @mentions in this message",
   },
   { path: "user.name", group: "builtin" },
   { path: "user.id", group: "builtin" },
@@ -66,22 +70,14 @@ const BUILTINS: PathOption[] = [
     group: "builtin",
     hint: "true when the bot is a group admin; only set in groups",
   },
-  { path: "local.replyId", group: "local", hint: "same as message.replyId" },
-  {
-    path: "local.replySender",
-    group: "local",
-    hint: "same as message.replySender",
-  },
-  {
-    path: "local.replyText",
-    group: "local",
-    hint: "same as message.replyText",
-  },
   { path: "local._index", group: "local", hint: "repeat index" },
   { path: "local._return", group: "local", hint: "last function return" },
   { path: "local.lastAsset", group: "local", hint: "last get_asset result" },
   { path: "local.getUser", group: "local", hint: "last get_user result" },
   { path: "local.getType", group: "local", hint: "last get_type result" },
+  { path: "local.getLink", group: "local", hint: "last get_link / reset_link { code, url }" },
+  { path: "local.getLink.url", group: "local", hint: "invite URL" },
+  { path: "local.getLink.code", group: "local", hint: "invite code" },
 ];
 
 const GROUP_ORDER: PathGroup[] = [
@@ -180,9 +176,8 @@ export function collectLocalNames(actions: EditorAction[]): string[] {
   return [...names];
 }
 
-export function paramDraftsFromCommand(command: EditorCommand): ParamDraft[] {
-  const source = command.triggers[0]?.trim() || command.name.trim() || undefined;
-  return command.parameters
+export function paramDraftsFromNames(names: string[], source?: string): ParamDraft[] {
+  return names
     .map((p) => p.trim())
     .filter(Boolean)
     .map((name) => ({

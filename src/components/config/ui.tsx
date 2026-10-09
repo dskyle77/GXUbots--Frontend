@@ -26,6 +26,13 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 
 import { cn } from "../../lib/cn";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "../ui/dropdown-menu";
 
 /** Prefer importing Input from components/ui — kept for editor compatibility. */
 export const inputClass =
@@ -50,17 +57,23 @@ export function Field({
   return (
     <label className={`block ${className}`}>
       {label ? (
-        <span className="mb-1 block text-xs font-medium text-foreground/80">{label}</span>
+        <span className="mb-1 block text-xs font-medium text-foreground/80">
+          {label}
+        </span>
       ) : null}
       {children}
       {error ? <p className="mt-1 text-xs text-amber-400/90">{error}</p> : null}
-      {!error && hint ? <p className="mt-1 text-xs text-muted-foreground">{hint}</p> : null}
+      {!error && hint ? (
+        <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
+      ) : null}
     </label>
   );
 }
 
 export function Hint({ children }: { children: ReactNode }) {
-  return <p className="text-xs leading-snug text-muted-foreground">{children}</p>;
+  return (
+    <p className="text-xs leading-snug text-muted-foreground">{children}</p>
+  );
 }
 
 export function WarnList({ items }: { items: string[] }) {
@@ -77,19 +90,31 @@ export function WarnList({ items }: { items: string[] }) {
   );
 }
 
-export function TextInput({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
+export function TextInput({
+  className,
+  ...props
+}: InputHTMLAttributes<HTMLInputElement>) {
   return <input {...props} className={cn(inputClass, className)} />;
 }
 
-export function TextArea({ className, ...props }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+export function TextArea({
+  className,
+  ...props
+}: TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return <textarea {...props} className={cn(textAreaClass, className)} />;
 }
 
-export function Select({ className, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
+export function Select({
+  className,
+  ...props
+}: SelectHTMLAttributes<HTMLSelectElement>) {
   return <select {...props} className={cn(inputClass, className)} />;
 }
 
-export function SecondaryButton({ className = "", ...props }: ButtonHTMLAttributes<HTMLButtonElement>) {
+export function SecondaryButton({
+  className = "",
+  ...props
+}: ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
     <button
       {...props}
@@ -115,7 +140,10 @@ export function IconButton({
   className = "",
   children,
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { label: string; danger?: boolean }) {
+}: ButtonHTMLAttributes<HTMLButtonElement> & {
+  label: string;
+  danger?: boolean;
+}) {
   return (
     <button
       type="button"
@@ -156,27 +184,8 @@ export function ItemCard({
   disableDown?: boolean;
   children: ReactNode;
 }) {
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    function onPointer(event: PointerEvent) {
-      if (!menuRef.current?.contains(event.target as Node)) setMenuOpen(false);
-    }
-    function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") setMenuOpen(false);
-    }
-    document.addEventListener("pointerdown", onPointer);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("pointerdown", onPointer);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [menuOpen]);
-
   return (
-    <article className="border-b border-border py-2 last:border-b-0">
+    <article className="min-w-0 border-b border-border py-2 last:border-b-0">
       <div className="flex items-center gap-0.5 px-0.5 py-0.5">
         {handle}
         <input
@@ -186,56 +195,72 @@ export function ItemCard({
           onChange={(event) => onTitleChange(event.target.value)}
           className="min-w-0 flex-1 bg-transparent px-1.5 py-1 text-sm font-medium text-foreground outline-none placeholder:font-normal placeholder:text-muted-foreground"
         />
-        <div ref={menuRef} className={`relative shrink-0 ${menuOpen ? "z-30" : ""}`}>
-          <IconButton label="More actions" onClick={() => setMenuOpen((v) => !v)}>
-            <MoreIcon />
-          </IconButton>
-          {menuOpen ? (
-            <div className="absolute right-0 z-30 mt-1 min-w-[9rem] rounded-lg border border-border bg-popover p-1 shadow-gxu">
-              <button
-                type="button"
-                disabled={disableUp}
-                onClick={() => {
-                  onUp();
-                  setMenuOpen(false);
-                }}
-                className="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-left text-sm text-foreground hover:bg-[var(--color-hover)] disabled:opacity-30"
-              >
-                Move up
-              </button>
-              <button
-                type="button"
-                disabled={disableDown}
-                onClick={() => {
-                  onDown();
-                  setMenuOpen(false);
-                }}
-                className="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-left text-sm text-foreground hover:bg-[var(--color-hover)] disabled:opacity-30"
-              >
-                Move down
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  onRemove();
-                  setMenuOpen(false);
-                }}
-                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-destructive hover:bg-destructive/10"
-              >
-                Remove
-              </button>
-            </div>
-          ) : null}
-        </div>
+        <RowMenu
+          label="More actions"
+          disableUp={disableUp}
+          disableDown={disableDown}
+          onUp={onUp}
+          onDown={onDown}
+          onRemove={onRemove}
+        />
       </div>
       {children ? <div className="space-y-3 p-3">{children}</div> : null}
     </article>
   );
 }
 
+/** Move up / Move down / Remove. Shared by ItemCard and action rows. */
+export function RowMenu({
+  label = "More actions",
+  onUp,
+  onDown,
+  onRemove,
+  disableUp = false,
+  disableDown = false,
+}: {
+  label?: string;
+  onUp: () => void;
+  onDown: () => void;
+  onRemove: () => void;
+  disableUp?: boolean;
+  disableDown?: boolean;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          aria-label={label}
+          title={label}
+          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-[var(--color-hover)] hover:text-foreground data-[state=open]:bg-[var(--color-hover)] data-[state=open]:text-foreground"
+        >
+          <MoreIcon />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-[9rem]">
+        <DropdownMenuItem disabled={disableUp} onSelect={onUp}>
+          Move up
+        </DropdownMenuItem>
+        <DropdownMenuItem disabled={disableDown} onSelect={onDown}>
+          Move down
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem danger onSelect={onRemove}>
+          Remove
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 function MoreIcon() {
   return (
-    <svg viewBox="0 0 16 16" className="h-4 w-4" fill="currentColor" aria-hidden="true">
+    <svg
+      viewBox="0 0 16 16"
+      className="h-4 w-4"
+      fill="currentColor"
+      aria-hidden="true"
+    >
       <circle cx="8" cy="3.5" r="1.25" />
       <circle cx="8" cy="8" r="1.25" />
       <circle cx="8" cy="12.5" r="1.25" />
@@ -243,8 +268,44 @@ function MoreIcon() {
   );
 }
 
-export type MenuOption = { value: string; label: string; hint?: string };
+export type MenuOption = {
+  value: string;
+  label: string;
+  hint?: string;
+  /** Optional section heading when rendering grouped menus */
+  group?: string;
+};
 
+/** Kept for PathField / ExprTextField fixed positioning. */
+export function measureMenuCoords(
+  anchor: HTMLElement,
+  opts?: { minHeight?: number; maxHeight?: number; minWidth?: number },
+): { top: number; left: number; width: number; maxHeight: number } {
+  const minHeight = opts?.minHeight ?? 100;
+  const maxCap = opts?.maxHeight ?? 280;
+  const minWidth = opts?.minWidth ?? 160;
+  const rect = anchor.getBoundingClientRect();
+  const spaceBelow = window.innerHeight - rect.bottom - 12;
+  const spaceAbove = rect.top - 12;
+  const preferBelow = spaceBelow >= 140 || spaceBelow >= spaceAbove;
+  const maxHeight = Math.min(
+    maxCap,
+    Math.max(minHeight, preferBelow ? spaceBelow : spaceAbove),
+  );
+  const width = Math.max(rect.width, minWidth);
+  return {
+    top: preferBelow ? rect.bottom + 4 : Math.max(8, rect.top - maxHeight - 4),
+    left: Math.min(rect.left, window.innerWidth - Math.min(width, 320) - 8),
+    width,
+    maxHeight,
+  };
+}
+
+/**
+ * Custom select — same pattern as `front`: absolute list under the trigger,
+ * relative z-index when open, solid popover surface. Adds search + groups
+ * for long lists (action types).
+ */
 export function MenuSelect({
   value,
   onChange,
@@ -261,72 +322,149 @@ export function MenuSelect({
   size?: "md" | "sm";
 }) {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
   const [highlight, setHighlight] = useState(-1);
   const rootRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
   const listId = useId();
   const selected = options.find((option) => option.value === value);
+  const searchable = options.length > 6;
+  const hasGroups = options.some((o) => o.group);
+
+  const filtered = (() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return options;
+    return options.filter(
+      (o) =>
+        o.label.toLowerCase().includes(q) ||
+        o.value.toLowerCase().includes(q) ||
+        (o.hint && o.hint.toLowerCase().includes(q)) ||
+        (o.group && o.group.toLowerCase().includes(q)),
+    );
+  })();
+
+  const sections = (() => {
+    if (!hasGroups) return [{ label: null as string | null, items: filtered }];
+    const order: string[] = [];
+    const map = new Map<string, MenuOption[]>();
+    for (const opt of filtered) {
+      const g = opt.group || "";
+      if (!map.has(g)) {
+        map.set(g, []);
+        order.push(g);
+      }
+      map.get(g)!.push(opt);
+    }
+    return order.map((label) => ({
+      label: label || null,
+      items: map.get(label)!,
+    }));
+  })();
 
   useEffect(() => {
-    if (!open) return;
-    const idx = options.findIndex((o) => o.value === value);
-    setHighlight(idx >= 0 ? idx : 0);
+    if (!open) {
+      setQuery("");
+      return;
+    }
+    const idx = filtered.findIndex((o) => o.value === value);
+    setHighlight(idx >= 0 ? idx : filtered.length ? 0 : -1);
+    if (searchable) {
+      requestAnimationFrame(() => searchRef.current?.focus());
+    }
     function onPointer(event: PointerEvent) {
       if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
     }
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
     document.addEventListener("pointerdown", onPointer);
-    return () => document.removeEventListener("pointerdown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, options, value]);
 
   useEffect(() => {
-    if (!open || highlight < 0) return;
-    const el = listRef.current?.querySelectorAll<HTMLElement>('[role="option"]')[highlight];
-    el?.scrollIntoView({ block: "nearest" });
-  }, [highlight, open]);
+    if (!open) return;
+    const idx = filtered.findIndex((o) => o.value === value);
+    setHighlight(idx >= 0 ? idx : filtered.length ? 0 : -1);
+  }, [query, open, value, filtered]);
 
-  function selectIndex(i: number) {
-    const opt = options[i];
-    if (!opt) return;
+  useEffect(() => {
+    if (!open || highlight < 0) return;
+    const el =
+      listRef.current?.querySelectorAll<HTMLElement>('[role="option"]')[
+        highlight
+      ];
+    el?.scrollIntoView({ block: "nearest" });
+  }, [highlight, open, filtered.length]);
+
+  function selectOption(opt: MenuOption) {
     onChange(opt.value);
     setOpen(false);
   }
 
+  function onListKeyDown(event: ReactKeyboardEvent) {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setHighlight((h) => (h + 1) % Math.max(filtered.length, 1));
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setHighlight((h) => (h <= 0 ? filtered.length - 1 : h - 1));
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      if (highlight >= 0 && filtered[highlight]) selectOption(filtered[highlight]);
+    } else if (event.key === "Escape") {
+      setOpen(false);
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      setHighlight(0);
+    } else if (event.key === "End") {
+      event.preventDefault();
+      setHighlight(Math.max(filtered.length - 1, 0));
+    }
+  }
+
   function onTriggerKeyDown(event: ReactKeyboardEvent) {
-    if (event.key === "ArrowDown" || event.key === "ArrowUp" || event.key === "Enter" || event.key === " ") {
+    if (
+      event.key === "ArrowDown" ||
+      event.key === "ArrowUp" ||
+      event.key === "Enter" ||
+      event.key === " "
+    ) {
       event.preventDefault();
       if (!open) {
         setOpen(true);
         return;
       }
       if (event.key === "Enter" || event.key === " ") {
-        if (highlight >= 0) selectIndex(highlight);
-        return;
-      }
-      if (event.key === "ArrowDown") {
-        setHighlight((h) => (h + 1) % Math.max(options.length, 1));
+        if (highlight >= 0 && filtered[highlight]) selectOption(filtered[highlight]);
+      } else if (event.key === "ArrowDown") {
+        setHighlight((h) => (h + 1) % Math.max(filtered.length, 1));
       } else if (event.key === "ArrowUp") {
-        setHighlight((h) => (h <= 0 ? options.length - 1 : h - 1));
+        setHighlight((h) => (h <= 0 ? filtered.length - 1 : h - 1));
       }
     } else if (event.key === "Escape") {
       setOpen(false);
-    } else if (event.key === "Home" && open) {
-      event.preventDefault();
-      setHighlight(0);
-    } else if (event.key === "End" && open) {
-      event.preventDefault();
-      setHighlight(Math.max(options.length - 1, 0));
     }
   }
 
+  let flatIndex = 0;
+
   return (
-    <div ref={rootRef} className={`relative ${open ? "z-30" : ""}`}>
+    <div ref={rootRef} className={`relative ${open ? "z-40" : ""}`}>
       <button
         type="button"
         aria-label={ariaLabel}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={listId}
-        aria-activedescendant={open && highlight >= 0 ? `${listId}-opt-${highlight}` : undefined}
+        aria-activedescendant={
+          open && highlight >= 0 ? `${listId}-opt-${highlight}` : undefined
+        }
         onClick={() => setOpen((current) => !current)}
         onKeyDown={onTriggerKeyDown}
         className={cn(
@@ -334,59 +472,110 @@ export function MenuSelect({
           size === "sm" ? "h-8" : "h-9",
         )}
       >
-        <span className={cn("min-w-0 truncate", selected ? "text-foreground" : "text-muted-foreground")}>
+        <span
+          className={cn(
+            "min-w-0 truncate",
+            selected ? "text-foreground" : "text-muted-foreground",
+          )}
+        >
           {selected?.label || placeholder}
         </span>
-        <ChevronDown className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} />
+        <ChevronDown
+          className={cn(
+            "h-4 w-4 shrink-0 text-muted-foreground transition-transform",
+            open && "rotate-180",
+          )}
+        />
       </button>
       {open ? (
         <div
           ref={listRef}
           id={listId}
           role="listbox"
-          className="absolute z-30 mt-1 max-h-56 w-full overflow-auto rounded-sm border border-border bg-popover p-1 shadow-gxu"
+          onKeyDown={onListKeyDown}
+          className="absolute z-40 mt-1 flex max-h-64 w-full min-w-[12rem] flex-col overflow-hidden rounded-sm border border-border bg-popover text-popover-foreground shadow-gxu"
         >
-          {options.length === 0 ? (
-            <p className="px-3 py-2 text-sm text-muted-foreground">Nothing to choose</p>
-          ) : (
-            options.map((option, i) => {
-              const active = option.value === value;
-              const focused = i === highlight;
-              return (
-                <button
-                  key={option.value || option.label}
-                  id={`${listId}-opt-${i}`}
-                  type="button"
-                  role="option"
-                  aria-selected={active}
-                  onMouseEnter={() => setHighlight(i)}
-                  onClick={() => selectIndex(i)}
-                  className={cn(
-                    "flex w-full items-center justify-between gap-3 rounded-sm px-3 py-2 text-left text-sm",
-                    focused ? "bg-[var(--color-hover)] text-foreground" : "text-foreground/90",
-                    active && "text-primary",
-                  )}
-                >
-                  <span className="min-w-0">
-                    <span className="block truncate">{option.label}</span>
-                    {option.hint ? (
-                      <span className="block truncate text-xs text-muted-foreground">{option.hint}</span>
-                    ) : null}
-                  </span>
-                  {active ? <span className="text-xs text-primary">Selected</span> : null}
-                </button>
-              );
-            })
-          )}
+          {searchable ? (
+            <div className="shrink-0 border-b border-border p-1.5">
+              <input
+                ref={searchRef}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={onListKeyDown}
+                placeholder="Search…"
+                className="h-8 w-full rounded-sm border border-border bg-[var(--color-inset)] px-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-primary/50"
+              />
+            </div>
+          ) : null}
+          <div className="min-h-0 flex-1 overflow-y-auto p-1">
+            {filtered.length === 0 ? (
+              <p className="px-3 py-2 text-sm text-muted-foreground">
+                {options.length === 0 ? "Nothing to choose" : "No matches"}
+              </p>
+            ) : (
+              sections.map(({ label, items }) => (
+                <div key={label ?? "_"} className="mb-0.5">
+                  {label ? (
+                    <p className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      {label}
+                    </p>
+                  ) : null}
+                  {items.map((option) => {
+                    const i = flatIndex++;
+                    const active = option.value === value;
+                    const focused = i === highlight;
+                    return (
+                      <button
+                        key={option.value || option.label}
+                        id={`${listId}-opt-${i}`}
+                        type="button"
+                        role="option"
+                        aria-selected={active}
+                        onMouseEnter={() => setHighlight(i)}
+                        onClick={() => selectOption(option)}
+                        className={cn(
+                          "flex w-full items-center justify-between gap-2 rounded-sm px-2.5 py-1.5 text-left text-sm",
+                          focused
+                            ? "bg-[var(--color-hover)] text-foreground"
+                            : "text-foreground/90",
+                          active && "text-primary",
+                        )}
+                      >
+                        <span className="min-w-0">
+                          <span className="block truncate">{option.label}</span>
+                          {option.hint ? (
+                            <span className="block truncate font-mono text-[11px] text-muted-foreground">
+                              {option.hint}
+                            </span>
+                          ) : null}
+                        </span>
+                        {active ? (
+                          <span className="shrink-0 text-xs text-primary">✓</span>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              ))
+            )}
+          </div>
         </div>
       ) : null}
     </div>
   );
 }
 
+
 function ChevronUp() {
   return (
-    <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+    <svg
+      viewBox="0 0 16 16"
+      className="h-4 w-4"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      aria-hidden="true"
+    >
       <path d="M4 10l4-4 4 4" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
@@ -394,7 +583,14 @@ function ChevronUp() {
 
 function ChevronDown({ className = "h-4 w-4" }: { className?: string }) {
   return (
-    <svg viewBox="0 0 16 16" className={className} fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+    <svg
+      viewBox="0 0 16 16"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      aria-hidden="true"
+    >
       <path d="M4 6l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
@@ -402,7 +598,14 @@ function ChevronDown({ className = "h-4 w-4" }: { className?: string }) {
 
 function CloseIcon() {
   return (
-    <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+    <svg
+      viewBox="0 0 16 16"
+      className="h-4 w-4"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      aria-hidden="true"
+    >
       <path d="M4.5 4.5l7 7M11.5 4.5l-7 7" strokeLinecap="round" />
     </svg>
   );
@@ -410,7 +613,10 @@ function CloseIcon() {
 
 export function ErrorNote({ children }: { children: ReactNode }) {
   return (
-    <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+    <p
+      role="alert"
+      className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+    >
       {children}
     </p>
   );
@@ -425,7 +631,9 @@ export function SortableList<T extends { clientId: string }>({
   onChange: (items: T[]) => void;
   renderItem: (item: T, index: number, handle: ReactNode) => ReactNode;
 }) {
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+  );
 
   function onDragEnd(event: DragEndEvent) {
     const { active, over } = event;
@@ -439,8 +647,15 @@ export function SortableList<T extends { clientId: string }>({
   if (items.length === 0) return null;
 
   return (
-    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-      <SortableContext items={items.map((item) => item.clientId)} strategy={verticalListSortingStrategy}>
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragEnd={onDragEnd}
+    >
+      <SortableContext
+        items={items.map((item) => item.clientId)}
+        strategy={verticalListSortingStrategy}
+      >
         <div className="space-y-3">
           {items.map((item, index) => (
             <SortableRow key={item.clientId} id={item.clientId}>
@@ -453,11 +668,22 @@ export function SortableList<T extends { clientId: string }>({
   );
 }
 
-function SortableRow({ id, children }: { id: string; children: (handle: ReactNode) => ReactNode }) {
-  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id });
+function SortableRow({
+  id,
+  children,
+}: {
+  id: string;
+  children: (handle: ReactNode) => ReactNode;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition } =
+    useSortable({ id });
 
   return (
-    <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }}>
+    <div
+      ref={setNodeRef}
+      className="min-w-0"
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+    >
       {children(<DragHandle attributes={attributes} listeners={listeners} />)}
     </div>
   );
@@ -478,7 +704,12 @@ function DragHandle({
       {...attributes}
       {...listeners}
     >
-      <svg viewBox="0 0 16 16" className="h-4 w-4" fill="currentColor" aria-hidden="true">
+      <svg
+        viewBox="0 0 16 16"
+        className="h-4 w-4"
+        fill="currentColor"
+        aria-hidden="true"
+      >
         <circle cx="5" cy="4" r="1.2" />
         <circle cx="11" cy="4" r="1.2" />
         <circle cx="5" cy="8" r="1.2" />
@@ -500,7 +731,9 @@ export function moveItem<T>(items: T[], index: number, direction: -1 | 1) {
 }
 
 export function patchAt<T>(items: T[], index: number, patch: Partial<T>) {
-  return items.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item));
+  return items.map((item, itemIndex) =>
+    itemIndex === index ? { ...item, ...patch } : item,
+  );
 }
 
 export function removeAt<T>(items: T[], index: number) {

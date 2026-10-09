@@ -332,7 +332,7 @@ function tokenize(source: string): Tok[] {
       else if (word === "or") tokens.push({ kind: "or", start });
       else if (word === "not") tokens.push({ kind: "not", start });
       else {
-        error(`Unexpected "${word}". Use "{{${word}}}" for a path or "\\"${word}\\"" for a string.`, start);
+        error(`Unexpected "${word}". Use {{${word}}} for a path or "${word}" for a string.`, start);
       }
       continue;
     }

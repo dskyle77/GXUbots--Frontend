@@ -11,6 +11,7 @@ export type Bot = {
   description: string;
   status: BotStatus;
   linkedNumber: string | null;
+  eventConfig?: string | Record<string, unknown>;
   created_at?: string;
   updated_at?: string;
 };

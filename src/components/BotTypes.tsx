@@ -8,7 +8,7 @@ const botTypes = [
   {
     title: "Community Bots",
     description:
-      "Add commands, moderation, games, utilities, and community features.",
+      "Add handlers, moderation, games, utilities, and community features.",
     icon: "👥",
   },
   {

@@ -9,7 +9,7 @@ export {
   buildPathOptions,
   collectLocalNames,
   groupLabel,
-  paramDraftsFromCommand,
+  paramDraftsFromNames,
   paramDraftsFromFunction,
 } from "../../lib/path-catalog";
 
