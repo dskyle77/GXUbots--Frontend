@@ -837,11 +837,11 @@ export function VariableDefaultInput({
   }
 
   return (
-    <TextInput
-      type="text"
+    <TextArea
       value={value}
       placeholder="default value"
-      className={className}
+      className={cn("min-h-[60px] py-1.5", className)}
+      rows={2}
       onChange={(e) => onChange(e.target.value)}
     />
   );

@@ -16,7 +16,7 @@ import {
 } from "../../lib/packs";
 import { groupExposed, updateAvailable } from "../../lib/pack-settings";
 import { Button } from "../ui/button";
-import { Input } from "../ui/input";
+import { Input, Textarea } from "../ui/input";
 import { Field } from "../ui/field";
 import { Badge } from "../ui/badge";
 import { Switch } from "../ui/switch";
@@ -479,25 +479,42 @@ function SettingField({
     );
   }
 
+  if (field.type === "number") {
+    return (
+      <Field label={title} hint={help}>
+        <Input
+          type="number"
+          value={value}
+          placeholder="0"
+          className="font-mono"
+          onChange={(event) => onChange(event.target.value)}
+        />
+      </Field>
+    );
+  }
+
+  if (field.type === "array" || field.type === "object") {
+    return (
+      <Field label={title} hint={help}>
+        <Input
+          type="text"
+          value={value}
+          placeholder={
+            field.type === "array" ? '["item1", "item2"]' : '{"key": "value"}'
+          }
+          className="font-mono"
+          onChange={(event) => onChange(event.target.value)}
+        />
+      </Field>
+    );
+  }
+
   return (
     <Field label={title} hint={help}>
-      <Input
-        type={field.type === "number" ? "number" : "text"}
+      <Textarea
         value={value}
-        placeholder={
-          field.type === "array"
-            ? '["item1", "item2"]'
-            : field.type === "object"
-            ? '{"key": "value"}'
-            : field.type === "number"
-            ? "0"
-            : "value"
-        }
-        className={
-          field.type === "array" || field.type === "object" || field.type === "number"
-            ? "font-mono"
-            : ""
-        }
+        placeholder="value"
+        rows={3}
         onChange={(event) => onChange(event.target.value)}
       />
     </Field>

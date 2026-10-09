@@ -8,7 +8,15 @@ import type {
   ButtonHTMLAttributes,
   KeyboardEvent as ReactKeyboardEvent,
 } from "react";
-import { useEffect, useId, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  forwardRef,
+  useId,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
 import {
   DndContext,
   PointerSensor,
@@ -97,12 +105,43 @@ export function TextInput({
   return <input {...props} className={cn(inputClass, className)} />;
 }
 
-export function TextArea({
-  className,
-  ...props
-}: TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea {...props} className={cn(textAreaClass, className)} />;
-}
+export const TextArea = forwardRef<
+  HTMLTextAreaElement,
+  TextareaHTMLAttributes<HTMLTextAreaElement>
+>(({ className, onChange, onInput, ...props }, ref) => {
+  const innerRef = useRef<HTMLTextAreaElement | null>(null);
+
+  useImperativeHandle(ref, () => innerRef.current!);
+
+  const adjustHeight = useCallback(() => {
+    const el = innerRef.current;
+    if (el) {
+      el.style.height = "auto";
+      el.style.height = `${el.scrollHeight}px`;
+    }
+  }, []);
+
+  useEffect(() => {
+    adjustHeight();
+  }, [props.value, props.defaultValue, adjustHeight]);
+
+  return (
+    <textarea
+      ref={innerRef}
+      className={cn(textAreaClass, "resize-none overflow-hidden", className)}
+      onChange={(e) => {
+        adjustHeight();
+        onChange?.(e);
+      }}
+      onInput={(e) => {
+        adjustHeight();
+        onInput?.(e);
+      }}
+      {...props}
+    />
+  );
+});
+TextArea.displayName = "TextArea";
 
 export function Select({
   className,
