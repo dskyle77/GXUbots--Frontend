@@ -75,6 +75,17 @@ export const ACTION_LABELS: Record<string, string> = {
   call_function: "Call function",
   return: "Return",
   stop_event: "Stop event",
+  get_key: "Get key",
+  set_key: "Set key",
+  delete_key: "Delete key",
+  array_append: "Append to array",
+  array_prepend: "Prepend to array",
+  array_insert: "Insert into array",
+  array_remove: "Remove from array",
+  array_set: "Set array index",
+  array_clear: "Clear array",
+  for_each: "For each",
+  log: "Log",
 };
 
 export const QUOTED_PATHS = ["message.quotedMessageId", "message.quotedUserId", "message.quotedText"];
@@ -142,6 +153,19 @@ export function blankAction(type: string): PackAction {
   if (type === "repeat") return { type, count: 1, actions: [] };
   if (type === "call_function") return { type, function: "" };
   if (type === "return") return { type };
+  if (type === "get_link") return { type };
+  if (type === "reset_link") return { type };
+  if (type === "get_key") return { type, source: "chat.Map", key: "local.target", target: "local.value" };
+  if (type === "set_key") return { type, source: "chat.Map", key: "local.target", value: { type: "literal", value: true } };
+  if (type === "delete_key") return { type, source: "chat.Map", key: "local.target" };
+  if (type === "array_append") return { type, target: "local.list", value: { type: "literal", value: "" } };
+  if (type === "array_prepend") return { type, target: "local.list", value: { type: "literal", value: "" } };
+  if (type === "array_insert") return { type, target: "local.list", index: { type: "literal", value: 0 }, value: { type: "literal", value: "" } };
+  if (type === "array_remove") return { type, target: "local.list", value: { type: "literal", value: "" } };
+  if (type === "array_set") return { type, target: "local.list", index: { type: "literal", value: 0 }, value: { type: "literal", value: "" } };
+  if (type === "array_clear") return { type, target: "local.list" };
+  if (type === "for_each") return { type, list: "local.list", as: "local.item", actions: [] };
+  if (type === "log") return { type, level: "info", text: "" };
   return { type };
 }
 

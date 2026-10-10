@@ -159,64 +159,62 @@ export function ExprTextField({
 
   return (
     <div ref={rootRef} className={`space-y-1 ${menuOpen ? "relative z-40" : "relative"}`}>
-      <div className="flex items-center gap-1.5">
-        <input
-          ref={inputRef}
-          value={text}
-          aria-label={ariaLabel}
-          aria-invalid={Boolean(error)}
-          aria-autocomplete="list"
-          aria-expanded={menuOpen}
-          aria-controls={listId}
-          placeholder={placeholder}
-          spellCheck={false}
-          onFocus={() => {
-            setFocused(true);
-            if (inputRef.current) syncCaret(inputRef.current);
-          }}
-          onBlur={() => {
-            setFocused(false);
+      <input
+        ref={inputRef}
+        value={text}
+        aria-label={ariaLabel}
+        aria-invalid={Boolean(error)}
+        aria-autocomplete="list"
+        aria-expanded={menuOpen}
+        aria-controls={listId}
+        placeholder={placeholder}
+        spellCheck={false}
+        onFocus={() => {
+          setFocused(true);
+          if (inputRef.current) syncCaret(inputRef.current);
+        }}
+        onBlur={() => {
+          setFocused(false);
+          apply(text, true);
+        }}
+        onChange={(event) => {
+          const el = event.target;
+          apply(el.value, false, el.selectionStart ?? el.value.length);
+        }}
+        onClick={(event) => syncCaret(event.currentTarget)}
+        onKeyUp={(event) => syncCaret(event.currentTarget)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            if (menuOpen && filtered[0]) {
+              event.preventDefault();
+              insertPath(filtered[0].path);
+              return;
+            }
+            event.preventDefault();
             apply(text, true);
-          }}
-          onChange={(event) => {
-            const el = event.target;
-            apply(el.value, false, el.selectionStart ?? el.value.length);
-          }}
-          onClick={(event) => syncCaret(event.currentTarget)}
-          onKeyUp={(event) => syncCaret(event.currentTarget)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              if (menuOpen && filtered[0]) {
-                event.preventDefault();
-                insertPath(filtered[0].path);
-                return;
-              }
-              event.preventDefault();
-              apply(text, true);
-              (event.target as HTMLInputElement).blur();
-            }
-            if (event.key === "Escape" && menuOpen) {
-              event.preventDefault();
-              setMenuOpen(false);
-            }
-          }}
-          className={`${inputClass} min-w-0 flex-1 font-mono text-sm ${
-            error ? "border-amber-500/50 focus:border-amber-500/70" : ""
-          }`}
-        />
-        <InsertPathButton
-          actionsForLocal={rootActions}
-          onInsert={(snippet) => {
-            const next = text + (text && !/\s$/.test(text) ? " " : "") + snippet;
-            apply(next, false, next.length);
-          }}
-        />
-      </div>
+            (event.target as HTMLInputElement).blur();
+          }
+          if (event.key === "Escape" && menuOpen) {
+            event.preventDefault();
+            setMenuOpen(false);
+          }
+        }}
+        className={`${inputClass} min-w-0 font-mono text-sm ${
+          error ? "border-amber-500/50 focus:border-amber-500/70" : ""
+        }`}
+      />
+      <InsertPathButton
+        actionsForLocal={rootActions}
+        onInsert={(snippet) => {
+          const next = text + (text && !/\s$/.test(text) ? " " : "") + snippet;
+          apply(next, false, next.length);
+        }}
+      />
       {menuOpen && grouped.length > 0 ? (
         <div
           id={listId}
           role="listbox"
-          className="absolute left-0 right-10 z-40 mt-1 max-h-56 overflow-auto rounded-lg border border-border bg-popover p-1 shadow-gxu"
+          className="absolute left-0 right-0 z-40 mt-1 max-h-56 overflow-auto rounded-lg border border-border bg-popover p-1 shadow-gxu"
         >
           {grouped.map(({ group, items }) => (
             <div key={group} className="mb-1">

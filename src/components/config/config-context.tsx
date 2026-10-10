@@ -28,18 +28,24 @@ export function useEditorCtx(): EditorCtx {
 export function EditorConfigProvider({
   config,
   extraParams = [],
+  /** Exposed functions from declared dependencies (call as slug.Name). */
+  importFunctions = [],
   children,
 }: {
   config: EditorConfig;
   extraParams?: ParamDraft[];
+  importFunctions?: EditorCtx["functions"];
   children: ReactNode;
 }) {
   const value = useMemo<EditorCtx>(() => {
     const variables = config.packs.flatMap((p) => p.variables);
-    const functions = config.packs.flatMap((p) => p.functions);
+    const own = config.packs.flatMap((p) => p.functions);
+    // Imports after own so same-pack names win in simple lookups; call_function
+    // still lists both (imports use the qualified slug.Name).
+    const functions = [...own, ...importFunctions];
     const assets = config.packs.flatMap((p) => p.assets);
     return { variables, functions, assets, extraParams };
-  }, [config.packs, extraParams]);
+  }, [config.packs, extraParams, importFunctions]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

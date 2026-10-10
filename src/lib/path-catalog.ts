@@ -65,13 +65,15 @@ const BUILTINS: PathOption[] = [
   { path: "chat.type", group: "builtin" },
   { path: "bot.name", group: "builtin" },
   { path: "bot.id", group: "builtin" },
+  { path: "time.now", group: "builtin", hint: "Current time as epoch milliseconds (UTC)" },
   {
     path: "bot.isAdmin",
     group: "builtin",
     hint: "true when the bot is a group admin; only set in groups",
   },
-  { path: "local._index", group: "local", hint: "repeat index" },
+  { path: "local._index", group: "local", hint: "loop index" },
   { path: "local._return", group: "local", hint: "last function return" },
+  { path: "local.lastError", group: "local", hint: "last action error, or none" },
   { path: "local.lastAsset", group: "local", hint: "last get_asset result" },
   { path: "local.getUser", group: "local", hint: "last get_user result" },
   { path: "local.getType", group: "local", hint: "last get_type result" },
@@ -159,15 +161,27 @@ export function groupLabel(group: PathGroup): string {
 
 export function collectLocalNames(actions: EditorAction[]): string[] {
   const names = new Set<string>();
+
+  function addPath(path: string | undefined | null) {
+    const t = String(path ?? "").trim();
+    if (t.startsWith("local.") && t.length > 6) names.add(t.slice(6));
+  }
+
   const walk = (list: EditorAction[]) => {
     for (const action of list) {
-      if (action.type === "set_variable") {
-        const t = action.target.trim();
-        if (t.startsWith("local.")) names.add(t.slice(6));
+      if ("target" in action) addPath(action.target);
+      if (action.type === "array_remove") addPath(action.store);
+      if (action.type === "for_each") {
+        addPath(action.as);
+        walk(action.actions);
       }
       if (action.type === "if") {
         walk(action.actions);
         walk(action.elseActions);
+      }
+      if (action.type === "switch") {
+        for (const item of action.cases) walk(item.actions);
+        walk(action.defaultActions);
       }
       if (action.type === "repeat") walk(action.actions);
     }

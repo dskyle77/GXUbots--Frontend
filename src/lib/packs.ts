@@ -26,6 +26,10 @@ export type PackSummary = {
   visibility: string;
   ownerId: string;
   version: string;
+  /** Latest published version when viewing own packs (primary version may still be "draft"). */
+  publishedVersion?: string | null;
+  /** Newest-first published version strings. */
+  publishedVersions?: string[];
   /** Price in kobo; 0 = free */
   price_kobo?: number;
   /** Marketplace accent color */
@@ -39,6 +43,13 @@ export type PackSummary = {
     functions?: ExposedFunction[];
   };
 };
+
+/** Version to pin when adding as a dependency (never "draft"). */
+export function dependencyVersion(pack: PackSummary): string | null {
+  if (pack.publishedVersion && pack.publishedVersion !== "draft") return pack.publishedVersion;
+  if (pack.version && pack.version !== "draft") return pack.version;
+  return null;
+}
 
 export type InstalledPack = {
   botId: string;
@@ -63,6 +74,25 @@ export function saveDraft(id: string, definition: unknown) {
 
 export function publishPack(id: string, version: string) {
   return api<PackSummary>(`/api/packs/${id}/publish`, { method: "POST", body: JSON.stringify({ version }) });
+}
+
+export type PackVersionInfo = {
+  version: string;
+  created_at: string;
+  latest: boolean;
+  installs: number;
+  dependentCount: number;
+  canDelete: boolean;
+};
+
+export function listPackVersions(id: string) {
+  return api<PackVersionInfo[]>(`/api/packs/${id}/versions`);
+}
+
+export function deletePackVersion(id: string, version: string) {
+  return api<PackVersionInfo[]>(`/api/packs/${id}/versions/${encodeURIComponent(version)}`, {
+    method: "DELETE",
+  });
 }
 
 export function updatePack(
@@ -119,4 +149,18 @@ export function uninstallPack(botId: string, packId: string) {
 export function exposedVariables(pack: PackSummary): ExposedVariable[] {
   if (pack.exposedVariables) return pack.exposedVariables;
   return (pack.definition?.variables ?? []).filter((variable) => variable.expose);
+}
+
+
+export function addPackDependency(packId: string, dep: { packId: string; version: string }) {
+  return api<PackSummary>(`/api/packs/${packId}/dependencies`, {
+    method: "POST",
+    body: JSON.stringify(dep),
+  });
+}
+
+export function removePackDependency(packId: string, depPackId: string) {
+  return api<PackSummary>(`/api/packs/${packId}/dependencies/${depPackId}`, {
+    method: "DELETE",
+  });
 }

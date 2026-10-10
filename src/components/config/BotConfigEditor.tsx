@@ -479,30 +479,20 @@ function SettingField({
     );
   }
 
-  if (field.type === "number") {
+  if (field.type === "string" || field.type === "array" || field.type === "object") {
     return (
       <Field label={title} hint={help}>
-        <Input
-          type="number"
-          value={value}
-          placeholder="0"
-          className="font-mono"
-          onChange={(event) => onChange(event.target.value)}
-        />
-      </Field>
-    );
-  }
-
-  if (field.type === "array" || field.type === "object") {
-    return (
-      <Field label={title} hint={help}>
-        <Input
-          type="text"
+        <Textarea
+          autoResize
           value={value}
           placeholder={
-            field.type === "array" ? '["item1", "item2"]' : '{"key": "value"}'
+            field.type === "array"
+              ? '["item1", "item2"]'
+              : field.type === "object"
+              ? '{"key": "value"}'
+              : "value"
           }
-          className="font-mono"
+          className={field.type === "array" || field.type === "object" ? "font-mono" : ""}
           onChange={(event) => onChange(event.target.value)}
         />
       </Field>
@@ -511,10 +501,11 @@ function SettingField({
 
   return (
     <Field label={title} hint={help}>
-      <Textarea
+      <Input
+        type={field.type === "number" ? "number" : "text"}
         value={value}
-        placeholder="value"
-        rows={3}
+        placeholder={field.type === "number" ? "0" : "value"}
+        className={field.type === "number" ? "font-mono" : ""}
         onChange={(event) => onChange(event.target.value)}
       />
     </Field>

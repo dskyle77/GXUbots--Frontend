@@ -97,10 +97,10 @@ export type EditorAction =
   | { clientId: string; type: "reply_message"; text: string; messageId: string }
   | { clientId: string; type: "react_message"; emoji: string; messageId: string }
   | { clientId: string; type: "delete_message"; messageId: string }
-  | { clientId: string; type: "kick"; users: string }
-  | { clientId: string; type: "add_member"; users: string }
-  | { clientId: string; type: "promote"; users: string }
-  | { clientId: string; type: "demote"; users: string }
+  | { clientId: string; type: "kick"; users: EditorExpression }
+  | { clientId: string; type: "add_member"; users: EditorExpression }
+  | { clientId: string; type: "promote"; users: EditorExpression }
+  | { clientId: string; type: "demote"; users: EditorExpression }
   /** Only admins can edit group info */
   | { clientId: string; type: "lock_group" }
   /** Everyone can edit group info */
@@ -110,7 +110,18 @@ export type EditorAction =
   /** Revoke invite; store new link in local.getLink { code, url } */
   | { clientId: string; type: "reset_link"; target: string }
   | { clientId: string; type: "call_function"; functionName: string; args: { clientId: string; name: string; value: EditorExpression }[] }
-  | { clientId: string; type: "return"; value: EditorExpression | null };
+  | { clientId: string; type: "return"; value: EditorExpression | null }
+  | { clientId: string; type: "get_key"; source: string; key: EditorExpression; target: string }
+  | { clientId: string; type: "set_key"; source: string; key: EditorExpression; value: EditorExpression }
+  | { clientId: string; type: "delete_key"; source: string; key: EditorExpression }
+  | { clientId: string; type: "array_append"; target: string; value: EditorExpression }
+  | { clientId: string; type: "array_prepend"; target: string; value: EditorExpression }
+  | { clientId: string; type: "array_insert"; target: string; index: EditorExpression; value: EditorExpression }
+  | { clientId: string; type: "array_remove"; target: string; index: EditorExpression | null; value: EditorExpression | null; store: string }
+  | { clientId: string; type: "array_set"; target: string; index: EditorExpression; value: EditorExpression }
+  | { clientId: string; type: "array_clear"; target: string }
+  | { clientId: string; type: "for_each"; list: EditorExpression; as: string; actions: EditorAction[] }
+  | { clientId: string; type: "log"; level: "info" | "warn" | "error"; text: string };
 
 export const MAX_COMMAND_PARAMS = 5;
 
@@ -194,6 +205,17 @@ export const actionTypes = [
   "stop_event",
   "call_function",
   "return",
+  "get_key",
+  "set_key",
+  "delete_key",
+  "array_append",
+  "array_prepend",
+  "array_insert",
+  "array_remove",
+  "array_set",
+  "array_clear",
+  "for_each",
+  "log",
 ] as const;
 
 export const actionLabels: Record<(typeof actionTypes)[number], string> = {
@@ -224,6 +246,17 @@ export const actionLabels: Record<(typeof actionTypes)[number], string> = {
   stop_event: "Stop event",
   call_function: "Call function",
   return: "Return",
+  get_key: "Get key",
+  set_key: "Set key",
+  delete_key: "Delete key",
+  array_append: "Append to array",
+  array_prepend: "Prepend to array",
+  array_insert: "Insert into array",
+  array_remove: "Remove from array",
+  array_set: "Set array index",
+  array_clear: "Clear array",
+  for_each: "For each",
+  log: "Log",
 };
 
 /** Grouped options for the action-type picker (search + sections). */
@@ -258,6 +291,15 @@ export const actionTypeGroups: {
     label: "Data",
     types: [
       "set_variable",
+      "get_key",
+      "set_key",
+      "delete_key",
+      "array_append",
+      "array_prepend",
+      "array_insert",
+      "array_remove",
+      "array_set",
+      "array_clear",
       "get_asset",
       "get_user",
       "get_user_from_mention",
@@ -266,7 +308,7 @@ export const actionTypeGroups: {
   },
   {
     label: "Flow",
-    types: ["if", "switch", "repeat", "wait", "break", "continue", "stop_event"],
+    types: ["if", "switch", "repeat", "for_each", "wait", "break", "continue", "stop_event", "log"],
   },
   {
     label: "Functions",
@@ -354,7 +396,7 @@ export function blankAction(type: EditorAction["type"] = "send_message"): Editor
     case "add_member":
     case "promote":
     case "demote":
-      return { clientId: id, type, users: "" };
+      return { clientId: id, type, users: variableExpr("") };
     case "lock_group":
     case "unlock_group":
       return { clientId: id, type };
@@ -412,6 +454,46 @@ export function blankAction(type: EditorAction["type"] = "send_message"): Editor
       return { clientId: id, type, functionName: "", args: [] };
     case "return":
       return { clientId: id, type, value: null };
+    case "get_key":
+      return {
+        clientId: id,
+        type,
+        source: "chat.Map",
+        key: variableExpr("local.target"),
+        target: "local.value",
+      };
+    case "set_key":
+      return {
+        clientId: id,
+        type,
+        source: "chat.Map",
+        key: variableExpr("local.target"),
+        value: literal(true),
+      };
+    case "delete_key":
+      return { clientId: id, type, source: "chat.Map", key: variableExpr("local.target") };
+    case "array_append":
+      return { clientId: id, type, target: "local.list", value: literal("") };
+    case "array_prepend":
+      return { clientId: id, type, target: "local.list", value: literal("") };
+    case "array_insert":
+      return { clientId: id, type, target: "local.list", index: literal(0), value: literal("") };
+    case "array_remove":
+      return { clientId: id, type, target: "local.list", index: null, value: literal(""), store: "" };
+    case "array_set":
+      return { clientId: id, type, target: "local.list", index: literal(0), value: literal("") };
+    case "array_clear":
+      return { clientId: id, type, target: "local.list" };
+    case "for_each":
+      return {
+        clientId: id,
+        type,
+        list: variableExpr("local.list"),
+        as: "local.item",
+        actions: [],
+      };
+    case "log":
+      return { clientId: id, type, level: "info", text: "" };
   }
 }
 
@@ -672,11 +754,11 @@ export function parseAction(value: unknown): EditorAction | null {
     case "add_member":
     case "promote":
     case "demote":
-      return { clientId: id, type, users: rewriteQuotedPath(asString(item.users)) };
+      return { clientId: id, type, users: parseUsersField(item.users) };
     case "group_participants": {
       const groupAction = asString(item.action);
       const type = groupAction === "add" ? "add_member" : groupAction === "promote" ? "promote" : groupAction === "demote" ? "demote" : "kick";
-      return { clientId: id, type, users: rewriteQuotedPath(asString(item.users)) };
+      return { clientId: id, type, users: parseUsersField(item.users) };
     }
     case "group_setting": {
       const setting = asString(item.setting);
@@ -691,6 +773,93 @@ export function parseAction(value: unknown): EditorAction | null {
     case "get_link":
     case "reset_link":
       return { clientId: id, type, target: asString(item.target) };
+    case "get_key":
+      return {
+        clientId: id,
+        type,
+        source: asString(item.source) || "chat.Map",
+        key: typeof item.key === "string" ? variableExpr(item.key) : parseExpression(item.key),
+        target: asString(item.target) || "local.getKey",
+      };
+    case "set_key":
+      return {
+        clientId: id,
+        type,
+        source: asString(item.source) || "chat.Map",
+        key: typeof item.key === "string" ? variableExpr(item.key) : parseExpression(item.key),
+        value: parseExpression(item.value),
+      };
+    case "delete_key":
+      return {
+        clientId: id,
+        type,
+        source: asString(item.source) || "chat.Map",
+        key: typeof item.key === "string" ? variableExpr(item.key) : parseExpression(item.key),
+      };
+    case "array_append":
+      return {
+        clientId: id,
+        type,
+        target: asString(item.target) || "local.list",
+        value: parseExpression(item.value),
+      };
+    case "array_prepend":
+      return {
+        clientId: id,
+        type,
+        target: asString(item.target) || "local.list",
+        value: parseExpression(item.value),
+      };
+    case "array_insert":
+      return {
+        clientId: id,
+        type,
+        target: asString(item.target) || "local.list",
+        index: parseExpression(item.index),
+        value: parseExpression(item.value),
+      };
+    case "array_remove":
+      return {
+        clientId: id,
+        type,
+        target: asString(item.target) || "local.list",
+        index: item.index === undefined || item.index === null ? null : parseExpression(item.index),
+        value: item.value === undefined ? null : parseExpression(item.value),
+        store: asString(item.store),
+      };
+    case "array_set":
+      return {
+        clientId: id,
+        type,
+        target: asString(item.target) || "local.list",
+        index: parseExpression(item.index),
+        value: parseExpression(item.value),
+      };
+    case "array_clear":
+      return {
+        clientId: id,
+        type,
+        target: asString(item.target) || "local.list",
+      };
+    case "for_each":
+      return {
+        clientId: id,
+        type,
+        list: typeof item.list === "string" ? variableExpr(item.list) : parseExpression(item.list),
+        as: asString(item.as) || "local.item",
+        actions: Array.isArray(item.actions)
+          ? item.actions.map((a: unknown) => parseAction(a as Record<string, unknown>)).filter(Boolean) as EditorAction[]
+          : [],
+      };
+    case "log":
+      return {
+        clientId: id,
+        type,
+        level: (["info", "warn", "error"].includes(asString(item.level))
+          ? asString(item.level)
+          : "info") as "info" | "warn" | "error",
+        text: asString(item.text),
+      };
     case "send_media":
       return { clientId: id, type, text: asString(item.text), image: asString(item.image), file: asString(item.file) };
     case "set_variable": {
@@ -810,6 +979,30 @@ const QUOTED_PATH_ALIASES: Record<string, string> = {
 /** Old picker names. Backend only exposes message.quotedMessageId / quotedUserId / quotedText. */
 export function rewriteQuotedPath(value: string): string {
   return QUOTED_PATH_ALIASES[value] ?? value;
+}
+
+/** Legacy packs store users as a plain path/phone string; new packs use full expressions. */
+export function parseUsersField(value: unknown): EditorExpression {
+  if (typeof value === "string") {
+    const s = rewriteQuotedPath(value.trim());
+    if (!s) return variableExpr("");
+    // Path-like → variable; otherwise treat as literal (phone / raw id)
+    if (/^[a-zA-Z_][\w.]*$/.test(s)) return variableExpr(s);
+    return literal(s);
+  }
+  if (Array.isArray(value)) {
+    return parseUsersField(value[0] ?? "");
+  }
+  return parseExpression(value);
+}
+
+/** Emit expression JSON; plain variable paths stay readable as strings for older tooling. */
+export function serializeUsersField(expr: EditorExpression): unknown {
+  if (expr.type === "variable" && expr.path.trim()) return expr.path.trim();
+  if (expr.type === "literal" && (typeof expr.value === "string" || typeof expr.value === "number")) {
+    return String(expr.value);
+  }
+  return serializeExpression(expr);
 }
 
 export function parseExpression(value: unknown): EditorExpression {
@@ -958,13 +1151,13 @@ function serializeAction(action: EditorAction): Record<string, unknown> {
     case "delete_message":
       return { type: action.type, ...messageIdField(action.messageId) };
     case "kick":
-      return { type: "group_participants", action: "remove", users: action.users };
+      return { type: "group_participants", action: "remove", users: serializeUsersField(action.users) };
     case "add_member":
-      return { type: "group_participants", action: "add", users: action.users };
+      return { type: "group_participants", action: "add", users: serializeUsersField(action.users) };
     case "promote":
-      return { type: "group_participants", action: "promote", users: action.users };
+      return { type: "group_participants", action: "promote", users: serializeUsersField(action.users) };
     case "demote":
-      return { type: "group_participants", action: "demote", users: action.users };
+      return { type: "group_participants", action: "demote", users: serializeUsersField(action.users) };
     case "lock_group":
       return { type: "group_setting", setting: "locked" };
     case "unlock_group":
@@ -1034,6 +1227,78 @@ function serializeAction(action: EditorAction): Record<string, unknown> {
     case "continue":
     case "stop_event":
       return { type: action.type };
+    case "get_key":
+      return {
+        type: action.type,
+        source: action.source.trim(),
+        key: serializeExpression(action.key),
+        ...(action.target.trim() ? { target: action.target.trim() } : {}),
+      };
+    case "set_key":
+      return {
+        type: action.type,
+        source: action.source.trim(),
+        key: serializeExpression(action.key),
+        value: serializeExpression(action.value),
+      };
+    case "delete_key":
+      return {
+        type: action.type,
+        source: action.source.trim(),
+        key: serializeExpression(action.key),
+      };
+    case "array_append":
+      return {
+        type: action.type,
+        target: action.target.trim(),
+        value: serializeExpression(action.value),
+      };
+    case "array_prepend":
+      return {
+        type: action.type,
+        target: action.target.trim(),
+        value: serializeExpression(action.value),
+      };
+    case "array_insert":
+      return {
+        type: action.type,
+        target: action.target.trim(),
+        index: serializeExpression(action.index),
+        value: serializeExpression(action.value),
+      };
+    case "array_remove":
+      return {
+        type: action.type,
+        target: action.target.trim(),
+        ...(action.index ? { index: serializeExpression(action.index) } : {}),
+        ...(action.value ? { value: serializeExpression(action.value) } : {}),
+        ...(action.store.trim() ? { store: action.store.trim() } : {}),
+      };
+    case "array_set":
+      return {
+        type: action.type,
+        target: action.target.trim(),
+        index: serializeExpression(action.index),
+        value: serializeExpression(action.value),
+      };
+    case "array_clear":
+      return {
+        type: action.type,
+        target: action.target.trim(),
+      };
+    case "for_each":
+      return {
+        type: action.type,
+        list: serializeExpression(action.list),
+        as: action.as.trim() || "local.item",
+        actions: action.actions.map(serializeAction),
+      };
+    case "log":
+      return {
+        type: action.type,
+        level: action.level,
+        text: action.text,
+      };
     case "call_function":
       return {
         type: action.type,

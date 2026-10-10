@@ -1,16 +1,18 @@
 /**
  * Small expression language → backend Expression AST.
  *
- *  {{user.name}}     path
- *  "hello" / 'hi'    string literal
- *  true false null   literals
- *  42  3.14          numbers
- *  + - * / %         arithmetic
- *  == != > < >= <=   compare
- *  and or not        logic (&& || ! also accepted)
- *  ( ... )           grouping
+ *  user.name / {{user.name}}   path (bare or braced)
+ *  Fn() / slug.Fn(a, b)        function / value-function call
+ *  "hello" / 'hi'              string literal
+ *  true false null             literals
+ *  42  3.14                    numbers
+ *  + - * / %                   arithmetic
+ *  == != > < >= <=             compare
+ *  and or not                  logic (&& || ! also accepted)
+ *  ( ... )                     grouping
  *
- * Bare words (hello) are errors — use "hello" or {{path}}.
+ * Bare identifiers are paths (or callees when followed by `(`).
+ * Quote strings: "hello". Keywords true/false/null/and/or/not stay reserved.
  */
 
 import {
@@ -292,8 +294,8 @@ function tokenize(source: string): Tok[] {
       continue;
     }
 
-    // single ops
-    if ("+-*/%<>!()".includes(ch)) {
+    // single ops + call punctuation
+    if ("+-*/%<>!(),".includes(ch)) {
       if (ch === "(") tokens.push({ kind: "lparen", start: i });
       else if (ch === ")") tokens.push({ kind: "rparen", start: i });
       else if (ch === ",") tokens.push({ kind: "comma", start: i });
@@ -317,7 +319,7 @@ function tokenize(source: string): Tok[] {
       continue;
     }
 
-    // word: true false null and or not — else ERROR (bare identifier)
+    // word / dotted path: true false null and or not, else path (params.x, slug.Fn)
     if (/[a-zA-Z_]/.test(ch)) {
       const start = i;
       let word = "";
@@ -325,15 +327,22 @@ function tokenize(source: string): Tok[] {
         word += source[i];
         i++;
       }
+      // Continue dotted segments: code_utils.ResolveUser, message.quotedUserId
+      while (source[i] === "." && /[a-zA-Z_]/.test(source[i + 1] ?? "")) {
+        word += ".";
+        i++;
+        while (i < source.length && /[a-zA-Z0-9_]/.test(source[i]!)) {
+          word += source[i];
+          i++;
+        }
+      }
       if (word === "true") tokens.push({ kind: "bool", value: true, start });
       else if (word === "false") tokens.push({ kind: "bool", value: false, start });
       else if (word === "null") tokens.push({ kind: "null", start });
       else if (word === "and") tokens.push({ kind: "and", start });
       else if (word === "or") tokens.push({ kind: "or", start });
       else if (word === "not") tokens.push({ kind: "not", start });
-      else {
-        error(`Unexpected "${word}". Use {{${word}}} for a path or "${word}" for a string.`, start);
-      }
+      else tokens.push({ kind: "path", value: word, start });
       continue;
     }
 
@@ -357,7 +366,8 @@ function format(expr: EditorExpression, parentPrec: number): string {
       return JSON.stringify(expr.value);
     }
     case "variable":
-      return `{{${expr.path}}}`;
+      // Bare path — matches backend placeholder parser and call syntax
+      return expr.path;
     case "call":
       return `${expr.callee}(${expr.args.map((arg) => format(arg, 0)).join(", ")})`;
     case "unary": {

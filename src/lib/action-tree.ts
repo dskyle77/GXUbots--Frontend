@@ -2,7 +2,11 @@ import type { EditorAction } from "./config-editor";
 
 export type ActionListId = string;
 
-export function listIdFor(action: EditorAction, branch: "then" | "else" | "repeat" | "default" | "case", caseId?: string): ActionListId {
+export function listIdFor(
+  action: EditorAction,
+  branch: "then" | "else" | "repeat" | "foreach" | "default" | "case",
+  caseId?: string,
+): ActionListId {
   if (branch === "case") return `${caseId}:case`;
   return `${action.clientId}:${branch}`;
 }
@@ -55,6 +59,7 @@ function findInAction(action: EditorAction, id: string): { listId: ActionListId;
     return findAction(action.actions, id, listIdFor(action, "then")) ?? findAction(action.elseActions, id, listIdFor(action, "else"));
   }
   if (action.type === "repeat") return findAction(action.actions, id, listIdFor(action, "repeat"));
+  if (action.type === "for_each") return findAction(action.actions, id, listIdFor(action, "foreach"));
   if (action.type === "switch") {
     for (const item of action.cases) {
       const found = findAction(item.actions, id, `${item.clientId}:case`);
@@ -70,6 +75,7 @@ function listIsInside(action: EditorAction, listId: ActionListId): boolean {
     return listId === listIdFor(action, "then") || listId === listIdFor(action, "else") || listIsInsideAny(action.actions, listId) || listIsInsideAny(action.elseActions, listId);
   }
   if (action.type === "repeat") return listId === listIdFor(action, "repeat") || listIsInsideAny(action.actions, listId);
+  if (action.type === "for_each") return listId === listIdFor(action, "foreach") || listIsInsideAny(action.actions, listId);
   if (action.type === "switch") {
     if (listId === listIdFor(action, "default") || action.cases.some((item) => listId === `${item.clientId}:case`)) return true;
     return action.cases.some((item) => listIsInsideAny(item.actions, listId)) || listIsInsideAny(action.defaultActions, listId);
@@ -103,6 +109,10 @@ function readInAction(action: EditorAction, listId: ActionListId): EditorAction[
   }
   if (action.type === "repeat") {
     if (listId === listIdFor(action, "repeat")) return action.actions;
+    return readList(action.actions, listId);
+  }
+  if (action.type === "for_each") {
+    if (listId === listIdFor(action, "foreach")) return action.actions;
     return readList(action.actions, listId);
   }
   if (action.type === "switch") {
@@ -146,6 +156,12 @@ function updateAction(action: EditorAction, listId: ActionListId, update: (list:
     return {
       ...action,
       actions: listId === listIdFor(action, "repeat") ? update(action.actions) : updateList(action.actions, listId, update),
+    };
+  }
+  if (action.type === "for_each") {
+    return {
+      ...action,
+      actions: listId === listIdFor(action, "foreach") ? update(action.actions) : updateList(action.actions, listId, update),
     };
   }
   if (action.type === "switch") {

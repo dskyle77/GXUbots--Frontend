@@ -151,18 +151,20 @@ export function actionSummary(action: EditorAction): string {
         : "send media";
     }
     case "kick":
-      return action.users.trim() ? `kick  ${truncate(action.users)}` : "kick";
+      return exprSummary(action.users) !== "…"
+        ? `kick  ${exprSummary(action.users)}`
+        : "kick";
     case "add_member":
-      return action.users.trim()
-        ? `add  ${truncate(action.users)}`
+      return exprSummary(action.users) !== "…"
+        ? `add  ${exprSummary(action.users)}`
         : "add member";
     case "promote":
-      return action.users.trim()
-        ? `promote  ${truncate(action.users)}`
+      return exprSummary(action.users) !== "…"
+        ? `promote  ${exprSummary(action.users)}`
         : "promote";
     case "demote":
-      return action.users.trim()
-        ? `demote  ${truncate(action.users)}`
+      return exprSummary(action.users) !== "…"
+        ? `demote  ${exprSummary(action.users)}`
         : "demote";
     case "lock_group":
       return "lock group";
@@ -214,6 +216,40 @@ export function actionSummary(action: EditorAction): string {
     }
     case "return":
       return action.value ? `return  ${exprSummary(action.value)}` : "return";
+    case "get_key":
+      return `get  ${truncate(action.source)}[${exprSummary(action.key)}] → ${action.target.trim() || "local.getKey"}`;
+    case "set_key":
+      return `set  ${truncate(action.source)}[${exprSummary(action.key)}] = ${exprSummary(action.value)}`;
+    case "delete_key":
+      return `del  ${truncate(action.source)}[${exprSummary(action.key)}]`;
+    case "array_append":
+      return action.target.trim()
+        ? `append  ${exprSummary(action.value)} → ${action.target}`
+        : "append to array";
+    case "array_prepend":
+      return action.target.trim()
+        ? `prepend  ${exprSummary(action.value)} → ${action.target}`
+        : "prepend to array";
+    case "array_insert":
+      return action.target.trim()
+        ? `insert  ${exprSummary(action.value)} at ${exprSummary(action.index)} in ${action.target}`
+        : "insert into array";
+    case "array_remove":
+      return action.target.trim()
+        ? `remove  ${action.index ? `index ${exprSummary(action.index)}` : exprSummary(action.value ?? literal("?"))} from ${action.target}`
+        : "remove from array";
+    case "array_set":
+      return action.target.trim()
+        ? `set  ${action.target}[${exprSummary(action.index)}] = ${exprSummary(action.value)}`
+        : "set array index";
+    case "array_clear":
+      return action.target.trim() ? `clear  ${action.target}` : "clear array";
+    case "for_each":
+      return `for each  ${exprSummary(action.list)} as ${action.as.trim() || "local.item"}`;
+    case "log":
+      return action.text.trim()
+        ? `log  ${action.level}  ${truncate(action.text)}`
+        : `log  ${action.level}`;
     default:
       return "action";
   }
@@ -240,8 +276,13 @@ function isActionComplete(action: EditorAction): boolean {
     case "kick":
     case "add_member":
     case "promote":
-    case "demote":
-      return Boolean(action.users.trim());
+    case "demote": {
+      const u = action.users;
+      if (u.type === "variable") return Boolean(u.path.trim());
+      if (u.type === "literal") return u.value !== "" && u.value != null;
+      if (u.type === "call") return Boolean(u.callee.trim());
+      return true;
+    }
     case "set_variable":
       return Boolean(action.target.trim());
     case "get_asset":
@@ -274,6 +315,22 @@ function isActionComplete(action: EditorAction): boolean {
       return Boolean(action.functionName.trim());
     case "return":
       return true;
+    case "get_key":
+      return Boolean(action.source.trim() && action.target.trim());
+    case "set_key":
+    case "delete_key":
+      return Boolean(action.source.trim());
+    case "array_append":
+    case "array_prepend":
+    case "array_insert":
+    case "array_remove":
+    case "array_set":
+    case "array_clear":
+      return Boolean(action.target.trim());
+    case "for_each":
+      return true;
+    case "log":
+      return Boolean(action.text.trim());
     default:
       return false;
   }
@@ -298,7 +355,10 @@ function childBadge(action: EditorAction): string | null {
     if (action.defaultActions.length) parts.push("default");
     return parts.length ? parts.join(" · ") : null;
   }
-  if (action.type === "repeat" && action.actions.length) {
+  if (
+    (action.type === "repeat" || action.type === "for_each") &&
+    action.actions.length
+  ) {
     return `${action.actions.length} action${action.actions.length === 1 ? "" : "s"}`;
   }
   return null;
@@ -725,11 +785,22 @@ const ACTION_ERRORS: Partial<Record<EditorAction["type"], string[]>> = {
     "none",
     "function_not_found",
     "dependency_not_declared",
+    "dependency_not_installed",
     "function_not_exposed",
     "not_a_value_function",
     "action_cap",
     "call_depth",
   ],
+  get_key: ["none", "key_required", "source_required", "key_not_found"],
+  set_key: ["none", "key_required", "source_required"],
+  delete_key: ["none", "key_required", "source_required", "key_not_found"],
+  array_append: ["none", "target_required"],
+  array_prepend: ["none", "target_required"],
+  array_insert: ["none", "target_required", "not_an_array", "index_out_of_range"],
+  array_remove: ["none", "target_required", "not_an_array", "index_out_of_range", "value_not_found"],
+  array_set: ["none", "target_required", "not_an_array", "index_out_of_range"],
+  array_clear: ["none", "target_required"],
+  for_each: ["none"],
 };
 
 function ErrorHint({ type }: { type: EditorAction["type"] }) {
@@ -1099,6 +1170,71 @@ function SwitchActionFields({
   );
 }
 
+function JsonValueEditor({
+  kind,
+  value,
+  onChange,
+}: {
+  kind: "object" | "array";
+  value: EditorExpression;
+  onChange: (value: EditorExpression) => void;
+}) {
+  const fallback = kind === "object" ? "{}" : "[]";
+  const stored =
+    value.type === "literal" && value.value != null ? String(value.value) : fallback;
+  const [text, setText] = useState(stored);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setText(stored);
+    setError(null);
+  }, [stored]);
+
+  function commit(next: string) {
+    setText(next);
+    const trimmed = next.trim();
+    if (!trimmed) {
+      setError(kind === "object" ? "Enter a JSON object" : "Enter a JSON array");
+      return;
+    }
+    try {
+      const parsed = JSON.parse(trimmed);
+      const ok =
+        kind === "object"
+          ? parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
+          : Array.isArray(parsed);
+      if (!ok) {
+        setError(kind === "object" ? "Must be a JSON object {}" : "Must be a JSON array []");
+        return;
+      }
+      setError(null);
+      onChange(literal(trimmed));
+    } catch {
+      setError("Invalid JSON");
+    }
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <Field label={kind === "object" ? "Object JSON" : "Array JSON"}>
+        <TextArea
+          value={text}
+          spellCheck={false}
+          className="min-h-24 font-mono text-xs"
+          placeholder={kind === "object" ? '{"id": "user.id", "reason": "spam"}' : '["a", "b"]'}
+          onChange={(event) => commit(event.target.value)}
+        />
+      </Field>
+      {error ? <p className="text-xs text-amber-400/90">{error}</p> : null}
+      <Hint>
+        {kind === "object"
+          ? "JSON object. Nested objects and arrays are fine."
+          : "JSON array. Numbers, strings, objects, and nested arrays are fine."}
+      </Hint>
+    </div>
+  );
+}
+
 function ActionFields({
   action,
   onChange,
@@ -1143,6 +1279,12 @@ function ActionFields({
           }
           className="min-h-16"
           placeholder="Hello {{tag(message.quotedUserId)}}"
+        />
+        <InsertPathForMessage
+          rootActions={rootActions}
+          onInsert={(snippet) =>
+            onChange({ ...action, text: action.text + snippet })
+          }
         />
         <Field label="Message id">
           <PathField
@@ -1199,12 +1341,10 @@ function ActionFields({
   if (action.type === "add_member") {
     return (
       <div className="mt-1.5">
-        <TextInput
+        <ExprTextField
           value={action.users}
-          placeholder="params.phone, 080…, 23480…, or +44…"
-          onChange={(event) =>
-            onChange({ ...action, users: event.target.value })
-          }
+          onChange={(users) => onChange({ ...action, users })}
+          placeholder='params.phone, "080…", or code_utils.ResolveUser(...)'
         />
       </div>
     );
@@ -1217,12 +1357,10 @@ function ActionFields({
   ) {
     return (
       <div className="mt-1.5">
-        <TextInput
+        <ExprTextField
           value={action.users}
-          placeholder="params.UserMention, message.quotedUserId, or a WhatsApp id"
-          onChange={(event) =>
-            onChange({ ...action, users: event.target.value })
-          }
+          onChange={(users) => onChange({ ...action, users })}
+          placeholder="params.mention, message.quotedUserId, or code_utils.ResolveUser(...)"
         />
       </div>
     );
@@ -1275,12 +1413,21 @@ function ActionFields({
               onChange({ ...action, text: event.target.value })
             }
           />
+          <div className="mt-1.5">
+            <InsertPathForMessage
+              rootActions={rootActions}
+              onInsert={(snippet) =>
+                onChange({ ...action, text: action.text + snippet })
+              }
+            />
+          </div>
         </Field>
       </div>
     );
   }
 
   if (action.type === "set_variable") {
+    const structured = action.valueType === "object" || action.valueType === "array";
     return (
       <div className="mt-1.5 grid gap-2 sm:grid-cols-2">
         <Field label="Target">
@@ -1298,12 +1445,25 @@ function ActionFields({
             ariaLabel="Value type"
             value={action.valueType}
             placeholder="auto"
-            onChange={(valueType) =>
-              onChange({
-                ...action,
-                valueType: valueType as ParameterType | "",
-              })
-            }
+            onChange={(valueType) => {
+              const nextType = valueType as ParameterType | "";
+              let nextValue = action.value;
+              if ((nextType === "object" || nextType === "array") && action.value.type === "literal") {
+                const raw = String(action.value.value ?? "").trim();
+                const fallback = nextType === "object" ? "{}" : "[]";
+                try {
+                  const parsed = raw ? JSON.parse(raw) : null;
+                  const ok =
+                    nextType === "object"
+                      ? parsed && typeof parsed === "object" && !Array.isArray(parsed)
+                      : Array.isArray(parsed);
+                  if (!ok) nextValue = literal(fallback);
+                } catch {
+                  nextValue = literal(fallback);
+                }
+              }
+              onChange({ ...action, valueType: nextType, value: nextValue });
+            }}
             options={[
               { value: "", label: "auto" },
               ...parameterTypes.map((type) => ({ value: type, label: type })),
@@ -1311,14 +1471,51 @@ function ActionFields({
           />
         </Field>
         <div className="sm:col-span-2">
-          <Field label="Value">
-            <ExprTextField
+          {structured && action.value.type === "literal" ? (
+            <JsonValueEditor
+              kind={action.valueType === "array" ? "array" : "object"}
               value={action.value}
-              rootActions={rootActions}
-              placeholder={"{{params.n}} + 1"}
               onChange={(value) => onChange({ ...action, value })}
             />
-          </Field>
+          ) : (
+            <Field label="Value" hint={structured ? "Expression — result is coerced to " + action.valueType : undefined}>
+              <ExprTextField
+                value={action.value}
+                rootActions={rootActions}
+                placeholder={
+                  action.valueType === "object"
+                    ? '{"key": "value"}'
+                    : action.valueType === "array"
+                      ? '["a", "b"]'
+                      : "{{params.n}} + 1"
+                }
+                onChange={(value) => onChange({ ...action, value })}
+              />
+            </Field>
+          )}
+          {structured && action.value.type !== "literal" ? (
+            <button
+              type="button"
+              className="mt-1.5 text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+              onClick={() =>
+                onChange({
+                  ...action,
+                  value: literal(action.valueType === "object" ? "{}" : "[]"),
+                })
+              }
+            >
+              Switch to JSON
+            </button>
+          ) : null}
+          {structured && action.value.type === "literal" ? (
+            <button
+              type="button"
+              className="mt-1.5 text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+              onClick={() => onChange({ ...action, value: variableExpr("") })}
+            >
+              Use expression instead
+            </button>
+          ) : null}
         </div>
       </div>
     );
@@ -1630,6 +1827,293 @@ function ActionFields({
         >
           Clear value
         </SecondaryButton>
+      </div>
+    );
+  }
+
+  if (action.type === "get_key") {
+    return (
+      <div className="mt-1.5 space-y-2">
+        <Field label="Map (object variable)">
+          <PathField
+            value={action.source}
+            placeholder="chat.Bans"
+            actionsForLocal={rootActions}
+            onChange={(source) => onChange({ ...action, source })}
+          />
+        </Field>
+        <Field label="Key">
+          <ExprTextField
+            value={action.key}
+            rootActions={rootActions}
+            placeholder="local.target or params.mention"
+            onChange={(key) => onChange({ ...action, key })}
+          />
+        </Field>
+        <Field label="Store result">
+          <PathField
+            value={action.target}
+            placeholder="local.getKey"
+            actionsForLocal={rootActions}
+            onChange={(target) => onChange({ ...action, target })}
+          />
+        </Field>
+      </div>
+    );
+  }
+
+  if (action.type === "set_key") {
+    return (
+      <div className="mt-1.5 space-y-2">
+        <Field label="Map (object variable)">
+          <PathField
+            value={action.source}
+            placeholder="chat.Bans"
+            actionsForLocal={rootActions}
+            onChange={(source) => onChange({ ...action, source })}
+          />
+        </Field>
+        <Field label="Key">
+          <ExprTextField
+            value={action.key}
+            rootActions={rootActions}
+            placeholder="local.target"
+            onChange={(key) => onChange({ ...action, key })}
+          />
+        </Field>
+        <Field label="Value">
+          <ExprTextField
+            value={action.value}
+            rootActions={rootActions}
+            onChange={(value) => onChange({ ...action, value })}
+          />
+        </Field>
+      </div>
+    );
+  }
+
+  if (action.type === "delete_key") {
+    return (
+      <div className="mt-1.5 space-y-2">
+        <Field label="Map (object variable)">
+          <PathField
+            value={action.source}
+            placeholder="chat.Bans"
+            actionsForLocal={rootActions}
+            onChange={(source) => onChange({ ...action, source })}
+          />
+        </Field>
+        <Field label="Key">
+          <ExprTextField
+            value={action.key}
+            rootActions={rootActions}
+            placeholder="local.target"
+            onChange={(key) => onChange({ ...action, key })}
+          />
+        </Field>
+      </div>
+    );
+  }
+
+  if (action.type === "array_append" || action.type === "array_prepend") {
+    return (
+      <div className="mt-1.5 space-y-2">
+        <Field label="Array path">
+          <PathField
+            value={action.target}
+            placeholder="chat.WarnHistory or local.list"
+            actionsForLocal={rootActions}
+            onChange={(target) => onChange({ ...action, target })}
+          />
+        </Field>
+        <Field label={action.type === "array_append" ? "Value to append" : "Value to prepend"}>
+          <ExprTextField
+            value={action.value}
+            rootActions={rootActions}
+            placeholder="local.record or params.reason"
+            onChange={(value) => onChange({ ...action, value })}
+          />
+        </Field>
+        <Hint>
+          Target must resolve to an array (declared array variable or local).
+          Creates a new array if the path is empty.
+        </Hint>
+      </div>
+    );
+  }
+
+  if (action.type === "array_insert" || action.type === "array_set") {
+    return (
+      <div className="mt-1.5 space-y-2">
+        <Field label="Array path">
+          <PathField
+            value={action.target}
+            placeholder="chat.Queue or local.list"
+            actionsForLocal={rootActions}
+            onChange={(target) => onChange({ ...action, target })}
+          />
+        </Field>
+        <Field label="Index">
+          <ExprTextField
+            value={action.index}
+            rootActions={rootActions}
+            placeholder="0 or local._index"
+            onChange={(index) => onChange({ ...action, index })}
+          />
+        </Field>
+        <Field label="Value">
+          <ExprTextField
+            value={action.value}
+            rootActions={rootActions}
+            placeholder="local.item"
+            onChange={(value) => onChange({ ...action, value })}
+          />
+        </Field>
+        <Hint>
+          Errors if the target is not an array or the index is out of range.
+          {action.type === "array_insert" ? " Insert shifts later elements right." : " Set replaces the existing element."}
+        </Hint>
+      </div>
+    );
+  }
+
+  if (action.type === "array_remove") {
+    return (
+      <div className="mt-1.5 space-y-2">
+        <Field label="Array path">
+          <PathField
+            value={action.target}
+            placeholder="chat.Bans or local.list"
+            actionsForLocal={rootActions}
+            onChange={(target) => onChange({ ...action, target })}
+          />
+        </Field>
+        <Field label="Index (optional — leave empty to remove by value)">
+          <ExprTextField
+            value={action.index ?? literal("")}
+            rootActions={rootActions}
+            placeholder="leave empty for value mode, or 0 / local._index"
+            onChange={(index) =>
+              onChange({
+                ...action,
+                index: index.type === "literal" && index.value === "" ? null : index,
+              })
+            }
+          />
+        </Field>
+        <Field label="Value (used when index is empty)">
+          <ExprTextField
+            value={action.value ?? literal("")}
+            rootActions={rootActions}
+            placeholder="params.userId or local.item"
+            onChange={(value) => onChange({ ...action, value })}
+          />
+        </Field>
+        <Field label="Store removed item (optional)">
+          <PathField
+            value={action.store}
+            placeholder="local.removed"
+            actionsForLocal={rootActions}
+            onChange={(store) => onChange({ ...action, store })}
+          />
+        </Field>
+        <Hint>
+          First match only when removing by value. Errors on bad index or if the value is not found.
+        </Hint>
+      </div>
+    );
+  }
+
+  if (action.type === "array_clear") {
+    return (
+      <div className="mt-1.5 space-y-2">
+        <Field label="Array path">
+          <PathField
+            value={action.target}
+            placeholder="chat.WarnIds or local.list"
+            actionsForLocal={rootActions}
+            onChange={(target) => onChange({ ...action, target })}
+          />
+        </Field>
+        <Hint>Sets the path to an empty array [].</Hint>
+      </div>
+    );
+  }
+
+  if (action.type === "for_each") {
+    return (
+      <div className="mt-1.5 space-y-2">
+        <Field label="List">
+          <ExprTextField
+            value={action.list}
+            rootActions={rootActions}
+            placeholder="chat.WarnHistory or local.list"
+            onChange={(list) => onChange({ ...action, list })}
+          />
+        </Field>
+        <Field label="Item path">
+          <PathField
+            value={action.as}
+            placeholder="local.item"
+            actionsForLocal={rootActions}
+            onChange={(as) => onChange({ ...action, as })}
+          />
+        </Field>
+        <Hint>
+          Each element is written to the item path. local._index is the 0-based
+          index. Use break / continue inside the loop.
+        </Hint>
+        <ActionList
+          actions={action.actions}
+          depth={depth + 1}
+          rootActions={rootActions}
+          listId={listIdFor(action, "foreach")}
+          parentActionId={action.clientId}
+          onChange={(actions) => onChange({ ...action, actions })}
+        />
+      </div>
+    );
+  }
+
+  if (action.type === "log") {
+    return (
+      <div className="mt-1.5 space-y-2">
+        <Field label="Level">
+          <MenuSelect
+            size="sm"
+            ariaLabel="Log level"
+            value={action.level}
+            onChange={(level) =>
+              onChange({
+                ...action,
+                level: level as "info" | "warn" | "error",
+              })
+            }
+            options={[
+              { value: "info", label: "info" },
+              { value: "warn", label: "warn" },
+              { value: "error", label: "error" },
+            ]}
+          />
+        </Field>
+        <Field label="Message">
+          <TextArea
+            value={action.text}
+            placeholder="Ban failed {{local.lastError}}"
+            className="min-h-12"
+            onChange={(event) =>
+              onChange({ ...action, text: event.target.value })
+            }
+          />
+          <div className="mt-1.5">
+            <InsertPathForMessage
+              rootActions={rootActions}
+              onInsert={(snippet) =>
+                onChange({ ...action, text: action.text + snippet })
+              }
+            />
+          </div>
+        </Field>
       </div>
     );
   }

@@ -10,13 +10,24 @@ export type ConfigIssue = {
   message: string;
 };
 
-export function validateConfig(config: EditorConfig): ConfigIssue[] {
+/**
+ * @param importFnNames Qualified dependency targets already known to be valid
+ *   (e.g. `admin_utils.RequireAdmin`). Same-pack names come from `config`.
+ */
+export function validateConfig(
+  config: EditorConfig,
+  importFnNames: Iterable<string> = [],
+): ConfigIssue[] {
   const issues: ConfigIssue[] = [];
   const fnKeys = new Set(
     config.packs.flatMap((p) =>
       p.functions.flatMap((f) => [f.id.trim(), f.name.trim()].filter(Boolean)),
     ),
   );
+  for (const name of importFnNames) {
+    const trimmed = String(name).trim();
+    if (trimmed) fnKeys.add(trimmed);
+  }
   const assetKeys = new Set(
     config.packs.flatMap((p) =>
       p.assets.flatMap((a) => [a.id.trim(), a.name.trim()].filter(Boolean)),

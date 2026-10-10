@@ -61,7 +61,13 @@ export default function PackPage() {
   return (
     <DashboardShell
       title={pack?.name ?? "Pack"}
-      description={pack ? `${pack.slug} · ${pack.version}` : undefined}
+      description={
+        pack
+          ? pack.publishedVersion
+            ? `${pack.slug} · editing draft · published ${pack.publishedVersion}`
+            : `${pack.slug} · draft (not published yet)`
+          : undefined
+      }
       actions={
         <Link
           href="/dashboard/packs"
@@ -89,6 +95,7 @@ export default function PackPage() {
           initialVisibility={pack.visibility}
           initialPriceKobo={Number(pack.price_kobo ?? 0)}
           initialColor={pack.color?.trim() || "#8b5cf6"}
+          initialPublishedVersion={pack.publishedVersion ?? null}
         />
       ) : null}
     </DashboardShell>

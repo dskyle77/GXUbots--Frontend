@@ -12,6 +12,18 @@ import {
 import type { EditorAction } from "../../lib/config-editor";
 import { inputClass } from "./ui";
 
+const KNOWN_ROOTS = new Set([
+  "local",
+  "params",
+  "chat",
+  "user",
+  "global",
+  "session",
+  "message",
+  "bot",
+  "time",
+]);
+
 const GROUP_ORDER: PathGroup[] = ["params", "local", "chat", "user", "global", "session", "builtin"];
 
 export function PathField({
@@ -39,7 +51,9 @@ export function PathField({
   );
   const options = useMemo(() => buildPathOptions(ctx, localNames), [ctx, localNames]);
   const known = useMemo(() => new Set(options.map((o) => o.path)), [options]);
-  const unknown = Boolean(value.trim()) && !known.has(value.trim());
+  const trimmed = value.trim();
+  const root = trimmed.split(".")[0] ?? "";
+  const unknown = Boolean(trimmed) && !known.has(trimmed) && !KNOWN_ROOTS.has(root);
 
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState(value);
