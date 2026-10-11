@@ -26,7 +26,8 @@ export type EditorExpression =
       operator: UnaryOperator;
       operand: EditorExpression;
     }
-  | { clientId: string; type: "call"; callee: string; args: EditorExpression[] };
+  | { clientId: string; type: "call"; callee: string; args: EditorExpression[] }
+  | { clientId: string; type: "member"; object: EditorExpression; property: string };
 
 export type BinaryOperator =
   | "=="
@@ -156,6 +157,8 @@ export type EditorVariable = {
   label: string;
   /** Help text under the setting on bot settings. */
   description: string;
+  /** When set, bot settings render a select instead of a free text field. */
+  options: string[];
 };
 
 export type EditorPack = {
@@ -734,6 +737,7 @@ function parseVariable(value: unknown): EditorVariable {
     expose: item.expose === true,
     label: asString(item.label),
     description: asString(item.description),
+    options: asArray(item.options).map((option) => asString(option)).filter(Boolean),
   };
 }
 
@@ -1015,6 +1019,14 @@ export function parseExpression(value: unknown): EditorExpression {
       args: asArray(item.args).map(parseExpression),
     };
   }
+  if (item.type === "member") {
+    return {
+      clientId: clientId(),
+      type: "member",
+      object: parseExpression(item.object),
+      property: asString(item.property),
+    };
+  }
   if (item.type === "variable") {
     return { clientId: clientId(), type: "variable", path: rewriteQuotedPath(asString(item.path)) };
   }
@@ -1055,6 +1067,8 @@ export function serializeExpression(expr: EditorExpression): Record<string, unkn
       return { type: "variable", path: expr.path };
     case "call":
       return { type: "call", callee: expr.callee, args: expr.args.map(serializeExpression) };
+    case "member":
+      return { type: "member", object: serializeExpression(expr.object), property: expr.property };
     case "binary":
       return {
         type: "binary",
@@ -1098,6 +1112,7 @@ function serializeVariable(variable: EditorVariable) {
   const group = variable.group.trim();
   const label = variable.label.trim();
   const description = variable.description.trim();
+  const options = variable.options.map((option) => option.trim()).filter(Boolean);
   return {
     name: variable.name.trim(),
     scope: variable.scope,
@@ -1109,6 +1124,7 @@ function serializeVariable(variable: EditorVariable) {
     ...(variable.expose ? { expose: true } : {}),
     ...(label ? { label } : {}),
     ...(description ? { description } : {}),
+    ...(options.length ? { options } : {}),
   };
 }
 

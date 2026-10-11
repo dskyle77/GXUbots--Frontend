@@ -16,6 +16,7 @@ export type ExposedVariable = {
   expose?: boolean;
   label?: string;
   description?: string;
+  options?: string[];
 };
 
 export type PackSummary = {

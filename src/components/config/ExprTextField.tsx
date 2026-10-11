@@ -24,16 +24,21 @@ const GROUP_ORDER: PathGroup[] = [
   "builtin",
 ];
 
-/** Detect `{{path fragment` under the cursor for autocomplete. */
-function pathHintAt(text: string, caret: number): { start: number; query: string } | null {
+/** Detect a path fragment under the cursor. `{{` is optional — expressions are typed bare. */
+function pathHintAt(text: string, caret: number): { start: number; query: string; braced: boolean } | null {
   const before = text.slice(0, caret);
   const open = before.lastIndexOf("{{");
-  if (open < 0) return null;
-  const afterOpen = before.slice(open + 2);
-  if (afterOpen.includes("}}")) return null;
-  // Only allow path-like characters inside the braces
-  if (/[^a-zA-Z0-9_./]/.test(afterOpen)) return null;
-  return { start: open, query: afterOpen };
+  if (open >= 0) {
+    const afterOpen = before.slice(open + 2);
+    if (!afterOpen.includes("}}") && !/[^a-zA-Z0-9_./]/.test(afterOpen)) {
+      return { start: open, query: afterOpen, braced: true };
+    }
+  }
+  const match = before.match(/(?:^|[^A-Za-z0-9_.])([A-Za-z_][A-Za-z0-9_.]*)$/);
+  if (!match || match.index === undefined) return null;
+  const query = match[1] ?? "";
+  if (!query) return null;
+  return { start: caret - query.length, query, braced: false };
 }
 
 export function ExprTextField({
@@ -129,19 +134,17 @@ export function ExprTextField({
   }
 
   function insertPath(path: string) {
+    const snippet = hint?.braced ? `{{${path}}}` : path;
     if (!hint) {
-      const snippet = `{{${path}}}`;
-      const next =
-        text + (text && !/\s$/.test(text) ? " " : "") + snippet;
+      const next = text + (text && !/\s$/.test(text) ? " " : "") + snippet;
       apply(next, false, next.length);
       return;
     }
     const end = caret;
     const before = text.slice(0, hint.start);
     const after = text.slice(end);
-    const inserted = `{{${path}}}`;
-    const next = before + inserted + after;
-    const newCaret = before.length + inserted.length;
+    const next = before + snippet + after;
+    const newCaret = before.length + snippet.length;
     apply(next, false, newCaret);
     setMenuOpen(false);
     requestAnimationFrame(() => {
@@ -206,7 +209,8 @@ export function ExprTextField({
       <InsertPathButton
         actionsForLocal={rootActions}
         onInsert={(snippet) => {
-          const next = text + (text && !/\s$/.test(text) ? " " : "") + snippet;
+          const bare = snippet.replace(/^\{\{|\}\}$/g, "");
+          const next = text + (text && !/\s$/.test(text) ? " " : "") + bare;
           apply(next, false, next.length);
         }}
       />
@@ -233,7 +237,9 @@ export function ExprTextField({
                   className="flex w-full items-center justify-between gap-3 rounded-md px-3 py-1.5 text-left text-sm text-foreground/85 hover:bg-[var(--color-hover)]"
                 >
                   <span className="min-w-0">
-                    <span className="block truncate font-mono text-sm">{`{{${option.path}}}`}</span>
+                    <span className="block truncate font-mono text-sm">
+                      {hint?.braced ? `{{${option.path}}}` : option.path}
+                    </span>
                     {option.hint ? (
                       <span className="block truncate text-xs text-muted-foreground">
                         {option.hint}

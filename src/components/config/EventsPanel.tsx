@@ -105,7 +105,14 @@ export function handlersOf(
   return group?.handlers ?? [];
 }
 
-/** @deprecated use handlersOf(pack, "message", phase) */
+export function setEventHandlers(
+  pack: EditorPack,
+  event: EventType,
+  phase: EventPhase,
+  handlers: EditorHandler[],
+): EditorPack {
+  return setHandlers(pack, event, phase, handlers);
+}
 export function messageHandlersOf(
   pack: EditorPack,
   phase: EventPhase,

@@ -1,5 +1,20 @@
 "use client";
 
+import { arrayMove } from "@dnd-kit/sortable";
+import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   blankPack,
@@ -40,6 +55,7 @@ import {
   eventUsesFilters,
   handlersOf,
   listHandlerLabels,
+  setEventHandlers,
 } from "./EventsPanel";
 import {
   EditorConfigProvider,
@@ -52,6 +68,7 @@ import {
   ErrorNote,
   Eyebrow,
   Field,
+  Hint,
   WarnList,
   IconButton,
   ItemCard,
@@ -527,6 +544,36 @@ export function ConfigEditor({
                     eventPhase={eventPhase}
                     eventType={eventType}
                     importFunctions={importFunctions}
+                    onReorder={(from, to) => {
+                      if (!pack0 || from === to) return;
+                      const next = structuredClone(config);
+                      const pack = next.packs[0];
+                      if (!pack) return;
+                      if (section === "events") {
+                        const handlers = handlersOf(pack, eventType, eventPhase);
+                        next.packs[0] = setEventHandlers(
+                          pack,
+                          eventType,
+                          eventPhase,
+                          arrayMove(handlers, from, to),
+                        );
+                      } else if (section === "functions") {
+                        pack.functions = arrayMove(pack.functions, from, to);
+                      } else if (section === "assets") {
+                        pack.assets = arrayMove(pack.assets, from, to);
+                      } else if (section === "variables") {
+                        pack.variables = arrayMove(pack.variables, from, to);
+                      }
+                      setConfig(next);
+                      if (selectedIndex === from) setSelectedIndex(to);
+                      else if (selectedIndex != null) {
+                        if (from < selectedIndex && to >= selectedIndex) {
+                          setSelectedIndex(selectedIndex - 1);
+                        } else if (from > selectedIndex && to <= selectedIndex) {
+                          setSelectedIndex(selectedIndex + 1);
+                        }
+                      }
+                    }}
                     onAdd={() => {
                       if (!pack0) return;
                       const next = structuredClone(config);
@@ -580,6 +627,7 @@ export function ConfigEditor({
                           expose: false,
                           label: "",
                           description: "",
+                          options: [],
                         });
                         setSelectedIndex(pack.variables.length - 1);
                       }
@@ -853,6 +901,7 @@ function RailItemList({
   selectedIndex,
   onSelect,
   onAdd,
+  onReorder,
   eventPhase = "handlers",
   eventType = "message",
   importFunctions = [],
@@ -862,21 +911,37 @@ function RailItemList({
   selectedIndex: number | null;
   onSelect: (index: number) => void;
   onAdd: () => void;
+  onReorder: (from: number, to: number) => void;
   eventPhase?: EventPhase;
   eventType?: EventType;
   importFunctions?: EditorFunction[];
 }) {
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+  );
   if (!pack) return null;
 
-  const ownLabels: string[] =
+  const ownItems: { id: string; label: string }[] =
     section === "events"
-      ? listHandlerLabels(pack, eventType, eventPhase)
+      ? handlersOf(pack, eventType, eventPhase).map((handler, index) => ({
+          id: handler.clientId,
+          label: listHandlerLabels(pack, eventType, eventPhase)[index] ?? "handler",
+        }))
       : section === "functions"
-        ? pack.functions.map((f) => f.name.trim() || "Untitled function")
+        ? pack.functions.map((item) => ({
+            id: item.clientId,
+            label: item.name.trim() || "Untitled function",
+          }))
         : section === "assets"
-          ? pack.assets.map((a) => a.name.trim() || "Untitled asset")
+          ? pack.assets.map((item) => ({
+              id: item.clientId,
+              label: item.name.trim() || "Untitled asset",
+            }))
           : section === "variables"
-            ? pack.variables.map((v) => v.name.trim() || "Untitled variable")
+            ? pack.variables.map((item) => ({
+                id: item.clientId,
+                label: item.name.trim() || "Untitled variable",
+              }))
             : [];
 
   const depLabels =
@@ -884,51 +949,69 @@ function RailItemList({
       ? importFunctions.map((f) => f.name.trim() || "Imported function")
       : [];
 
+  function onDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const from = ownItems.findIndex((item) => item.id === active.id);
+    const to = ownItems.findIndex((item) => item.id === over.id);
+    if (from < 0 || to < 0) return;
+    onReorder(from, to);
+  }
+
   return (
     <div className="hidden border-t border-border px-2 py-2 md:block">
-      <ul className="space-y-0.5">
-        {ownLabels.map((label, index) => (
-          <li key={`own-${label}-${index}`}>
-            <button
-              type="button"
-              onClick={() => onSelect(index)}
-              className={`w-full truncate rounded-sm px-3 py-1.5 text-left text-xs transition-colors ${
-                selectedIndex === index
-                  ? "bg-primary/15 text-foreground"
-                  : "text-muted-foreground hover:bg-[var(--color-hover)] hover:text-foreground"
-              }`}
-            >
-              {label}
-            </button>
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+        <SortableContext items={ownItems.map((item) => item.id)} strategy={verticalListSortingStrategy}>
+          <ul className="space-y-0.5">
+            {ownItems.map((item, index) => (
+              <RailSortable key={item.id} id={item.id}>
+                {(handle) => (
+                  <li className="flex items-center gap-0.5">
+                    {handle}
+                    <button
+                      type="button"
+                      onClick={() => onSelect(index)}
+                      className={`min-w-0 flex-1 truncate rounded-sm px-2 py-1.5 text-left text-xs transition-colors ${
+                        selectedIndex === index
+                          ? "bg-primary/15 text-foreground"
+                          : "text-muted-foreground hover:bg-[var(--color-hover)] hover:text-foreground"
+                      }`}
+                    >
+                      {item.label}
+                    </button>
+                  </li>
+                )}
+              </RailSortable>
+            ))}
+          </ul>
+        </SortableContext>
+      </DndContext>
+      {depLabels.length > 0 ? (
+        <ul className="mt-1 space-y-0.5">
+          <li className="px-3 pt-2 pb-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70">
+            From dependencies
           </li>
-        ))}
-        {depLabels.length > 0 ? (
-          <>
-            <li className="px-3 pt-2 pb-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70">
-              From dependencies
-            </li>
-            {depLabels.map((label, i) => {
-              const index = ownLabels.length + i;
-              return (
-                <li key={`dep-${label}-${i}`}>
-                  <button
-                    type="button"
-                    onClick={() => onSelect(index)}
-                    className={`w-full truncate rounded-sm px-3 py-1.5 text-left text-xs font-mono transition-colors ${
-                      selectedIndex === index
-                        ? "bg-primary/15 text-foreground"
-                        : "text-muted-foreground hover:bg-[var(--color-hover)] hover:text-foreground"
-                    }`}
-                    title="Imported — call via call_function; not editable here"
-                  >
-                    {label}
-                  </button>
-                </li>
-              );
-            })}
-          </>
-        ) : null}
-      </ul>
+          {depLabels.map((label, i) => {
+            const index = ownItems.length + i;
+            return (
+              <li key={`dep-${label}-${i}`}>
+                <button
+                  type="button"
+                  onClick={() => onSelect(index)}
+                  className={`w-full truncate rounded-sm px-3 py-1.5 text-left text-xs font-mono transition-colors ${
+                    selectedIndex === index
+                      ? "bg-primary/15 text-foreground"
+                      : "text-muted-foreground hover:bg-[var(--color-hover)] hover:text-foreground"
+                  }`}
+                  title="Imported — call via call_function; not editable here"
+                >
+                  {label}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
       <button
         type="button"
         onClick={onAdd}
@@ -936,6 +1019,41 @@ function RailItemList({
       >
         + Add {section === "events" ? "event" : section.slice(0, -1)}
       </button>
+    </div>
+  );
+}
+
+function RailSortable({
+  id,
+  children,
+}: {
+  id: string;
+  children: (handle: ReactNode) => ReactNode;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+    >
+      {children(
+        <button
+          type="button"
+          className="cursor-grab rounded-sm px-1 text-muted-foreground hover:text-foreground active:cursor-grabbing"
+          aria-label="Drag to reorder"
+          {...attributes}
+          {...listeners}
+        >
+          <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="currentColor" aria-hidden="true">
+            <circle cx="5" cy="4" r="1.1" />
+            <circle cx="11" cy="4" r="1.1" />
+            <circle cx="5" cy="8" r="1.1" />
+            <circle cx="11" cy="8" r="1.1" />
+            <circle cx="5" cy="12" r="1.1" />
+            <circle cx="11" cy="12" r="1.1" />
+          </svg>
+        </button>,
+      )}
     </div>
   );
 }
@@ -1135,6 +1253,23 @@ function SimpleValue({
   variable: EditorVariable;
   onChange: (value: string) => void;
 }) {
+  const options = (variable.options ?? []).map((option) => option.trim()).filter(Boolean);
+  if (options.length > 0) {
+    return (
+      <select
+        value={options.includes(variable.defaultValue) ? variable.defaultValue : ""}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-9 w-full rounded-md border border-white/10 bg-black/25 px-3 text-sm text-white/90"
+      >
+        <option value="">Select…</option>
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </select>
+    );
+  }
   return (
     <VariableDefaultInput
       type={variable.type}
@@ -1729,26 +1864,36 @@ function Variables({
                   </label>
                 </div>
                 {variable.expose ? (
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <TextInput
-                      value={variable.label}
-                      placeholder="Label (shown on bot settings)"
-                      onChange={(e) =>
+                  <div className="space-y-2">
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <TextInput
+                        value={variable.label}
+                        placeholder="Label (shown on bot settings)"
+                        onChange={(e) =>
+                          updatePack(pack.clientId, {
+                            variables: patchAt(pack.variables, index, {
+                              label: e.target.value,
+                            }),
+                          })
+                        }
+                      />
+                      <TextInput
+                        value={variable.description}
+                        placeholder="Description / help text"
+                        onChange={(e) =>
+                          updatePack(pack.clientId, {
+                            variables: patchAt(pack.variables, index, {
+                              description: e.target.value,
+                            }),
+                          })
+                        }
+                      />
+                    </div>
+                    <VariableOptionsEditor
+                      options={variable.options ?? []}
+                      onChange={(options) =>
                         updatePack(pack.clientId, {
-                          variables: patchAt(pack.variables, index, {
-                            label: e.target.value,
-                          }),
-                        })
-                      }
-                    />
-                    <TextInput
-                      value={variable.description}
-                      placeholder="Description / help text"
-                      onChange={(e) =>
-                        updatePack(pack.clientId, {
-                          variables: patchAt(pack.variables, index, {
-                            description: e.target.value,
-                          }),
+                          variables: patchAt(pack.variables, index, { options }),
                         })
                       }
                     />
@@ -1760,6 +1905,53 @@ function Variables({
         })}
       </div>
     </SectionCard>
+  );
+}
+
+function VariableOptionsEditor({
+  options,
+  onChange,
+}: {
+  options: string[];
+  onChange: (options: string[]) => void;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-medium text-foreground/80">Select options</span>
+        <SecondaryButton type="button" onClick={() => onChange([...options, ""])}>
+          Add option
+        </SecondaryButton>
+      </div>
+      {options.length === 0 ? (
+        <Hint>Leave empty for a free text field. Add options to show a select.</Hint>
+      ) : (
+        <div className="space-y-1.5">
+          {options.map((option, index) => (
+            <div key={index} className="flex items-center gap-1.5">
+              <TextInput
+                value={option}
+                placeholder="option"
+                aria-label={`Option ${index + 1}`}
+                onChange={(event) => {
+                  const next = [...options];
+                  next[index] = event.target.value;
+                  onChange(next);
+                }}
+              />
+              <button
+                type="button"
+                aria-label="Remove option"
+                className="h-8 shrink-0 rounded-sm px-2 text-xs text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                onClick={() => onChange(options.filter((_, i) => i !== index))}
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

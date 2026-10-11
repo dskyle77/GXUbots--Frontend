@@ -458,6 +458,26 @@ function SettingField({
 }) {
   const title = field.label?.trim() || field.name;
   const help = field.description?.trim() || field.type;
+  const options = (field.options ?? []).map((option) => option.trim()).filter(Boolean);
+
+  if (options.length > 0) {
+    return (
+      <Field label={title} hint={help}>
+        <select
+          value={options.includes(value) ? value : ""}
+          onChange={(event) => onChange(event.target.value)}
+          className="h-9 w-full rounded-md border border-white/10 bg-black/25 px-3 text-sm text-white/90"
+        >
+          <option value="">Select…</option>
+          {options.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+      </Field>
+    );
+  }
 
   if (field.type === "boolean") {
     const isTrue = value === "true" || value === "1";

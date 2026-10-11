@@ -31,6 +31,7 @@ export type ParseResult =
 
 type Tok =
   | { kind: "path"; value: string; start: number }
+  | { kind: "dot"; start: number }
   | { kind: "string"; value: string; start: number }
   | { kind: "number"; value: number; start: number }
   | { kind: "bool"; value: boolean; start: number }
@@ -167,6 +168,24 @@ export function parseExpressionText(source: string): ParseResult {
     return parsePrimary();
   }
 
+  function withMembers(expr: EditorExpression): EditorExpression {
+    let current = expr;
+    while (peek()?.kind === "dot") {
+      next();
+      const prop = expect("path", "property");
+      if (prop.kind !== "path" || prop.value.includes(".")) {
+        throw fail("Expected a property name", prop.start);
+      }
+      current = {
+        clientId: `c_${Math.random().toString(36).slice(2, 10)}`,
+        type: "member",
+        object: current,
+        property: prop.value,
+      };
+    }
+    return current;
+  }
+
   function parsePrimary(): EditorExpression {
     const t = peek();
     if (!t) throw fail("Unexpected end of expression");
@@ -184,7 +203,12 @@ export function parseExpressionText(source: string): ParseResult {
           }
         }
         expect("rparen", ")");
-        return { clientId: `c_${Math.random().toString(36).slice(2, 10)}`, type: "call", callee: t.value, args };
+        return withMembers({
+          clientId: `c_${Math.random().toString(36).slice(2, 10)}`,
+          type: "call",
+          callee: t.value,
+          args,
+        });
       }
       return variableExpr(t.value);
     }
@@ -208,7 +232,7 @@ export function parseExpressionText(source: string): ParseResult {
       next();
       const inner = parseOr();
       expect("rparen", ")");
-      return inner;
+      return withMembers(inner);
     }
     throw fail(`Unexpected token`, t.start);
   }
@@ -305,6 +329,13 @@ function tokenize(source: string): Tok[] {
       continue;
     }
 
+    // member access after a call or group: checkSpam().reasons
+    if (ch === "." && /[a-zA-Z_]/.test(source[i + 1] ?? "")) {
+      tokens.push({ kind: "dot", start: i });
+      i++;
+      continue;
+    }
+
     // number
     if (/\d/.test(ch) || (ch === "." && /\d/.test(source[i + 1] ?? ""))) {
       const start = i;
@@ -370,6 +401,8 @@ function format(expr: EditorExpression, parentPrec: number): string {
       return expr.path;
     case "call":
       return `${expr.callee}(${expr.args.map((arg) => format(arg, 0)).join(", ")})`;
+    case "member":
+      return `${format(expr.object, 6)}.${expr.property}`;
     case "unary": {
       const op = expr.operator === "not" ? "not " : "-";
       const inner = format(expr.operand, 5);
