@@ -1,17 +1,38 @@
-import type { EditorEventGroup, EditorFilter, EditorHandler, EventPhase, EventType } from "./event-system";
+import type {
+  EditorEventGroup,
+  EditorFilter,
+  EditorHandler,
+  EventPhase,
+  EventType,
+} from "./event-system";
 import { eventTypes } from "./event-system";
 
-export type ParameterType = "string" | "number" | "boolean" | "array" | "object";
+export type ParameterType =
+  | "string"
+  | "number"
+  | "boolean"
+  | "array"
+  | "object";
 export type VariableScope = "chat" | "user" | "global" | "session";
 export type AssetType = "json" | "text" | "image" | "file";
 
-export type { EditorEventGroup, EditorFilter, EditorHandler, EventPhase, EventType } from "./event-system";
+export type {
+  EditorEventGroup,
+  EditorFilter,
+  EditorHandler,
+  EventPhase,
+  EventType,
+} from "./event-system";
 
 /** Mirrors backend Expression; clientId is editor-only and stripped on serialize. */
 export type UnaryOperator = "not" | "negative";
 
 export type EditorExpression =
-  | { clientId: string; type: "literal"; value: string | number | boolean | null }
+  | {
+      clientId: string;
+      type: "literal";
+      value: string | number | boolean | null;
+    }
   | { clientId: string; type: "variable"; path: string }
   | {
       clientId: string;
@@ -27,7 +48,12 @@ export type EditorExpression =
       operand: EditorExpression;
     }
   | { clientId: string; type: "call"; callee: string; args: EditorExpression[] }
-  | { clientId: string; type: "member"; object: EditorExpression; property: string };
+  | {
+      clientId: string;
+      type: "member";
+      object: EditorExpression;
+      property: string;
+    };
 
 export type BinaryOperator =
   | "=="
@@ -44,7 +70,14 @@ export type BinaryOperator =
   | "and"
   | "or";
 
-export const compareOperators: BinaryOperator[] = ["==", "!=", ">", "<", ">=", "<="];
+export const compareOperators: BinaryOperator[] = [
+  "==",
+  "!=",
+  ">",
+  "<",
+  ">=",
+  "<=",
+];
 export const arithmeticOperators: BinaryOperator[] = ["+", "-", "*", "/", "%"];
 export const logicOperators: BinaryOperator[] = ["and", "or"];
 export const allBinaryOperators: BinaryOperator[] = [
@@ -55,7 +88,13 @@ export const allBinaryOperators: BinaryOperator[] = [
 
 export type EditorAction =
   | { clientId: string; type: "send_message"; text: string }
-  | { clientId: string; type: "send_media"; text: string; image: string; file: string }
+  | {
+      clientId: string;
+      type: "send_media";
+      text: string;
+      image: string;
+      file: string;
+    }
   | {
       clientId: string;
       type: "set_variable";
@@ -83,12 +122,22 @@ export type EditorAction =
       target: string;
     }
   | { clientId: string; type: "wait"; duration: EditorExpression }
-  | { clientId: string; type: "if"; condition: EditorExpression; actions: EditorAction[]; elseActions: EditorAction[] }
+  | {
+      clientId: string;
+      type: "if";
+      condition: EditorExpression;
+      actions: EditorAction[];
+      elseActions: EditorAction[];
+    }
   | {
       clientId: string;
       type: "switch";
       value: EditorExpression;
-      cases: { clientId: string; match: EditorExpression; actions: EditorAction[] }[];
+      cases: {
+        clientId: string;
+        match: EditorExpression;
+        actions: EditorAction[];
+      }[];
       defaultActions: EditorAction[];
     }
   | { clientId: string; type: "repeat"; count: number; actions: EditorAction[] }
@@ -96,7 +145,12 @@ export type EditorAction =
   | { clientId: string; type: "continue" }
   | { clientId: string; type: "stop_event" }
   | { clientId: string; type: "reply_message"; text: string; messageId: string }
-  | { clientId: string; type: "react_message"; emoji: string; messageId: string }
+  | {
+      clientId: string;
+      type: "react_message";
+      emoji: string;
+      messageId: string;
+    }
   | { clientId: string; type: "delete_message"; messageId: string }
   | { clientId: string; type: "kick"; users: EditorExpression }
   | { clientId: string; type: "add_member"; users: EditorExpression }
@@ -110,19 +164,81 @@ export type EditorAction =
   | { clientId: string; type: "get_link"; target: string }
   /** Revoke invite; store new link in local.getLink { code, url } */
   | { clientId: string; type: "reset_link"; target: string }
-  | { clientId: string; type: "call_function"; functionName: string; args: { clientId: string; name: string; value: EditorExpression }[] }
+  | {
+      clientId: string;
+      type: "call_function";
+      functionName: string;
+      args: { clientId: string; name: string; value: EditorExpression }[];
+    }
   | { clientId: string; type: "return"; value: EditorExpression | null }
-  | { clientId: string; type: "get_key"; source: string; key: EditorExpression; target: string }
-  | { clientId: string; type: "set_key"; source: string; key: EditorExpression; value: EditorExpression }
-  | { clientId: string; type: "delete_key"; source: string; key: EditorExpression }
-  | { clientId: string; type: "array_append"; target: string; value: EditorExpression }
-  | { clientId: string; type: "array_prepend"; target: string; value: EditorExpression }
-  | { clientId: string; type: "array_insert"; target: string; index: EditorExpression; value: EditorExpression }
-  | { clientId: string; type: "array_remove"; target: string; index: EditorExpression | null; value: EditorExpression | null; store: string }
-  | { clientId: string; type: "array_set"; target: string; index: EditorExpression; value: EditorExpression }
+  | {
+      clientId: string;
+      type: "get_key";
+      source: string;
+      key: EditorExpression;
+      target: string;
+    }
+  | {
+      clientId: string;
+      type: "set_key";
+      source: string;
+      key: EditorExpression;
+      value: EditorExpression;
+    }
+  | {
+      clientId: string;
+      type: "delete_key";
+      source: string;
+      key: EditorExpression;
+    }
+  | {
+      clientId: string;
+      type: "array_append";
+      target: string;
+      value: EditorExpression;
+    }
+  | {
+      clientId: string;
+      type: "array_prepend";
+      target: string;
+      value: EditorExpression;
+    }
+  | {
+      clientId: string;
+      type: "array_insert";
+      target: string;
+      index: EditorExpression;
+      value: EditorExpression;
+    }
+  | {
+      clientId: string;
+      type: "array_remove";
+      target: string;
+      index: EditorExpression | null;
+      value: EditorExpression | null;
+      store: string;
+    }
+  | {
+      clientId: string;
+      type: "array_set";
+      target: string;
+      index: EditorExpression;
+      value: EditorExpression;
+    }
   | { clientId: string; type: "array_clear"; target: string }
-  | { clientId: string; type: "for_each"; list: EditorExpression; as: string; actions: EditorAction[] }
-  | { clientId: string; type: "log"; level: "info" | "warn" | "error"; text: string };
+  | {
+      clientId: string;
+      type: "for_each";
+      list: EditorExpression;
+      as: string;
+      actions: EditorAction[];
+    }
+  | {
+      clientId: string;
+      type: "log";
+      level: "info" | "warn" | "error";
+      text: string;
+    };
 
 export const MAX_COMMAND_PARAMS = 5;
 
@@ -311,7 +427,17 @@ export const actionTypeGroups: {
   },
   {
     label: "Flow",
-    types: ["if", "switch", "repeat", "for_each", "wait", "break", "continue", "stop_event", "log"],
+    types: [
+      "if",
+      "switch",
+      "repeat",
+      "for_each",
+      "wait",
+      "break",
+      "continue",
+      "stop_event",
+      "log",
+    ],
   },
   {
     label: "Functions",
@@ -319,8 +445,19 @@ export const actionTypeGroups: {
   },
 ];
 
-export const parameterTypes: ParameterType[] = ["string", "number", "boolean", "array", "object"];
-export const variableScopes: VariableScope[] = ["chat", "user", "global", "session"];
+export const parameterTypes: ParameterType[] = [
+  "string",
+  "number",
+  "boolean",
+  "array",
+  "object",
+];
+export const variableScopes: VariableScope[] = [
+  "chat",
+  "user",
+  "global",
+  "session",
+];
 
 export function clientId() {
   return `c_${Math.random().toString(36).slice(2, 10)}`;
@@ -330,7 +467,9 @@ export function newId(prefix: string) {
   return `${prefix}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-export function literal(value: string | number | boolean | null = ""): EditorExpression {
+export function literal(
+  value: string | number | boolean | null = "",
+): EditorExpression {
   return { clientId: clientId(), type: "literal", value };
 }
 
@@ -352,14 +491,27 @@ export function binaryExpr(
   };
 }
 
-export function unaryExpr(operator: UnaryOperator = "not", operand?: EditorExpression): EditorExpression {
-  return { clientId: clientId(), type: "unary", operator, operand: operand ?? variableExpr("") };
+export function unaryExpr(
+  operator: UnaryOperator = "not",
+  operand?: EditorExpression,
+): EditorExpression {
+  return {
+    clientId: clientId(),
+    type: "unary",
+    operator,
+    operand: operand ?? variableExpr(""),
+  };
 }
 
-
 /** Flatten a left-associated chain of the same and/or operator into a list. */
-export function flattenLogic(expr: EditorExpression): { operator: "and" | "or"; items: EditorExpression[] } | null {
-  if (expr.type !== "binary" || (expr.operator !== "and" && expr.operator !== "or")) return null;
+export function flattenLogic(
+  expr: EditorExpression,
+): { operator: "and" | "or"; items: EditorExpression[] } | null {
+  if (
+    expr.type !== "binary" ||
+    (expr.operator !== "and" && expr.operator !== "or")
+  )
+    return null;
   const op = expr.operator;
   const items: EditorExpression[] = [];
   function walk(node: EditorExpression) {
@@ -375,16 +527,23 @@ export function flattenLogic(expr: EditorExpression): { operator: "and" | "or"; 
 }
 
 /** Left-fold a list into binary and/or nodes. */
-export function foldLogic(operator: "and" | "or", items: EditorExpression[]): EditorExpression {
+export function foldLogic(
+  operator: "and" | "or",
+  items: EditorExpression[],
+): EditorExpression {
   if (items.length === 0) return variableExpr("");
   if (items.length === 1) return items[0]!;
-  return items.slice(1).reduce<EditorExpression>(
-    (left, right) => binaryExpr(operator, left, right),
-    items[0]!,
-  );
+  return items
+    .slice(1)
+    .reduce<EditorExpression>(
+      (left, right) => binaryExpr(operator, left, right),
+      items[0]!,
+    );
 }
 
-export function blankAction(type: EditorAction["type"] = "send_message"): EditorAction {
+export function blankAction(
+  type: EditorAction["type"] = "send_message",
+): EditorAction {
   const id = clientId();
   switch (type) {
     case "send_message":
@@ -409,7 +568,13 @@ export function blankAction(type: EditorAction["type"] = "send_message"): Editor
     case "send_media":
       return { clientId: id, type, text: "", image: "", file: "" };
     case "set_variable":
-      return { clientId: id, type, target: "", value: literal(""), valueType: "" };
+      return {
+        clientId: id,
+        type,
+        target: "",
+        value: literal(""),
+        valueType: "",
+      };
     case "get_asset":
       return { clientId: id, type, asset: "" };
     case "get_user":
@@ -436,7 +601,13 @@ export function blankAction(type: EditorAction["type"] = "send_message"): Editor
     case "wait":
       return { clientId: id, type, duration: literal(1000) };
     case "if":
-      return { clientId: id, type, condition: variableExpr(""), actions: [], elseActions: [] };
+      return {
+        clientId: id,
+        type,
+        condition: variableExpr(""),
+        actions: [],
+        elseActions: [],
+      };
     case "switch":
       return {
         clientId: id,
@@ -474,17 +645,41 @@ export function blankAction(type: EditorAction["type"] = "send_message"): Editor
         value: literal(true),
       };
     case "delete_key":
-      return { clientId: id, type, source: "chat.Map", key: variableExpr("local.target") };
+      return {
+        clientId: id,
+        type,
+        source: "chat.Map",
+        key: variableExpr("local.target"),
+      };
     case "array_append":
       return { clientId: id, type, target: "local.list", value: literal("") };
     case "array_prepend":
       return { clientId: id, type, target: "local.list", value: literal("") };
     case "array_insert":
-      return { clientId: id, type, target: "local.list", index: literal(0), value: literal("") };
+      return {
+        clientId: id,
+        type,
+        target: "local.list",
+        index: literal(0),
+        value: literal(""),
+      };
     case "array_remove":
-      return { clientId: id, type, target: "local.list", index: null, value: literal(""), store: "" };
+      return {
+        clientId: id,
+        type,
+        target: "local.list",
+        index: null,
+        value: literal(""),
+        store: "",
+      };
     case "array_set":
-      return { clientId: id, type, target: "local.list", index: literal(0), value: literal("") };
+      return {
+        clientId: id,
+        type,
+        target: "local.list",
+        index: literal(0),
+        value: literal(""),
+      };
     case "array_clear":
       return { clientId: id, type, target: "local.list" };
     case "for_each":
@@ -535,7 +730,9 @@ export function parseConfig(raw: string, fallbackName: string): EditorConfig {
 
 function parsePack(value: unknown): EditorPack {
   const item = asRecord(value);
-  const priority = Number.isFinite(Number(item.priority)) ? Number(item.priority) : 0;
+  const priority = Number.isFinite(Number(item.priority))
+    ? Number(item.priority)
+    : 0;
   return {
     clientId: clientId(),
     id: asString(item.id) || newId("pack"),
@@ -545,14 +742,18 @@ function parsePack(value: unknown): EditorPack {
     functions: asArray(item.functions).map(parseFunction),
     assets: asArray(item.assets).map(parseAsset),
     variables: asArray(item.variables).map(parseVariable),
-    publicApi: asArray(item.publicApi).map((x) => String(x).trim()).filter(Boolean),
+    publicApi: asArray(item.publicApi)
+      .map((x) => String(x).trim())
+      .filter(Boolean),
   };
 }
 
 export function serializeConfig(config: EditorConfig) {
   return {
     name: config.name.trim(),
-    ...(config.description.trim() ? { description: config.description.trim() } : {}),
+    ...(config.description.trim()
+      ? { description: config.description.trim() }
+      : {}),
     packs: config.packs.map(serializePack),
   };
 }
@@ -574,7 +775,10 @@ function serializePack(pack: EditorPack) {
 
 // ── Event system parse / serialize ─────────────────
 
-function parseEventGroup(value: unknown, fallbackPriority: number): EditorEventGroup {
+function parseEventGroup(
+  value: unknown,
+  fallbackPriority: number,
+): EditorEventGroup {
   const item = asRecord(value);
   const eventRaw = asString(item.event) || "message";
   const event: EventType = (eventTypes as readonly string[]).includes(eventRaw)
@@ -620,7 +824,9 @@ function parseHandler(value: unknown): EditorHandler {
     id: asString(item.id) || newId("handler"),
     name: asString(item.name),
     filter: parseFilter(item.filter),
-    actions: asArray(item.actions).map(parseAction).filter(Boolean) as EditorAction[],
+    actions: asArray(item.actions)
+      .map(parseAction)
+      .filter(Boolean) as EditorAction[],
   };
 }
 
@@ -674,7 +880,12 @@ function serializeFilter(filter: EditorFilter): Record<string, unknown> {
         kind: "command",
         triggers: filter.triggers.map((t) => t.trim()).filter(Boolean),
         ...(filter.parameters.length
-          ? { parameters: filter.parameters.map((p) => p.trim()).filter(Boolean).slice(0, MAX_COMMAND_PARAMS) }
+          ? {
+              parameters: filter.parameters
+                .map((p) => p.trim())
+                .filter(Boolean)
+                .slice(0, MAX_COMMAND_PARAMS),
+            }
           : {}),
       };
     case "contains":
@@ -706,9 +917,15 @@ function parseFunction(value: unknown): EditorFunction {
     exposed: item.exposed === true,
     parameters: asArray(item.parameters).map((value) => {
       const parameter = asRecord(value);
-      return { clientId: clientId(), name: asString(parameter.name), type: asParameterType(parameter.type) };
+      return {
+        clientId: clientId(),
+        name: asString(parameter.name),
+        type: asParameterType(parameter.type),
+      };
     }),
-    actions: asArray(item.actions).map(parseAction).filter(Boolean) as EditorAction[],
+    actions: asArray(item.actions)
+      .map(parseAction)
+      .filter(Boolean) as EditorAction[],
   };
 }
 
@@ -720,7 +937,8 @@ function parseAsset(value: unknown): EditorAsset {
     id: asString(item.id) || newId("asset"),
     name: asString(item.name),
     type,
-    data: type === "json" ? stringifyValue(item.data ?? {}) : asString(item.data),
+    data:
+      type === "json" ? stringifyValue(item.data ?? {}) : asString(item.data),
     url: asString(item.url),
   };
 }
@@ -732,12 +950,15 @@ function parseVariable(value: unknown): EditorVariable {
     name: asString(item.name),
     scope: asScope(item.scope),
     type: asParameterType(item.type),
-    defaultValue: item.default === undefined ? "" : stringifyValue(item.default),
+    defaultValue:
+      item.default === undefined ? "" : stringifyValue(item.default),
     group: asString(item.group),
     expose: item.expose === true,
     label: asString(item.label),
     description: asString(item.description),
-    options: asArray(item.options).map((option) => asString(option)).filter(Boolean),
+    options: asArray(item.options)
+      .map((option) => asString(option))
+      .filter(Boolean),
   };
 }
 
@@ -749,9 +970,19 @@ export function parseAction(value: unknown): EditorAction | null {
     case "send_message":
       return { clientId: id, type, text: asString(item.text) };
     case "reply_message":
-      return { clientId: id, type, text: asString(item.text), messageId: messageIdOf(item.messageId) };
+      return {
+        clientId: id,
+        type,
+        text: asString(item.text),
+        messageId: messageIdOf(item.messageId),
+      };
     case "react_message":
-      return { clientId: id, type, emoji: asString(item.emoji), messageId: messageIdOf(item.messageId) };
+      return {
+        clientId: id,
+        type,
+        emoji: asString(item.emoji),
+        messageId: messageIdOf(item.messageId),
+      };
     case "delete_message":
       return { clientId: id, type, messageId: messageIdOf(item.messageId) };
     case "kick":
@@ -761,7 +992,14 @@ export function parseAction(value: unknown): EditorAction | null {
       return { clientId: id, type, users: parseUsersField(item.users) };
     case "group_participants": {
       const groupAction = asString(item.action);
-      const type = groupAction === "add" ? "add_member" : groupAction === "promote" ? "promote" : groupAction === "demote" ? "demote" : "kick";
+      const type =
+        groupAction === "add"
+          ? "add_member"
+          : groupAction === "promote"
+            ? "promote"
+            : groupAction === "demote"
+              ? "demote"
+              : "kick";
       return { clientId: id, type, users: parseUsersField(item.users) };
     }
     case "group_setting": {
@@ -782,7 +1020,10 @@ export function parseAction(value: unknown): EditorAction | null {
         clientId: id,
         type,
         source: asString(item.source) || "chat.Map",
-        key: typeof item.key === "string" ? variableExpr(item.key) : parseExpression(item.key),
+        key:
+          typeof item.key === "string"
+            ? variableExpr(item.key)
+            : parseExpression(item.key),
         target: asString(item.target) || "local.getKey",
       };
     case "set_key":
@@ -790,7 +1031,10 @@ export function parseAction(value: unknown): EditorAction | null {
         clientId: id,
         type,
         source: asString(item.source) || "chat.Map",
-        key: typeof item.key === "string" ? variableExpr(item.key) : parseExpression(item.key),
+        key:
+          typeof item.key === "string"
+            ? variableExpr(item.key)
+            : parseExpression(item.key),
         value: parseExpression(item.value),
       };
     case "delete_key":
@@ -798,7 +1042,10 @@ export function parseAction(value: unknown): EditorAction | null {
         clientId: id,
         type,
         source: asString(item.source) || "chat.Map",
-        key: typeof item.key === "string" ? variableExpr(item.key) : parseExpression(item.key),
+        key:
+          typeof item.key === "string"
+            ? variableExpr(item.key)
+            : parseExpression(item.key),
       };
     case "array_append":
       return {
@@ -827,7 +1074,10 @@ export function parseAction(value: unknown): EditorAction | null {
         clientId: id,
         type,
         target: asString(item.target) || "local.list",
-        index: item.index === undefined || item.index === null ? null : parseExpression(item.index),
+        index:
+          item.index === undefined || item.index === null
+            ? null
+            : parseExpression(item.index),
         value: item.value === undefined ? null : parseExpression(item.value),
         store: asString(item.store),
       };
@@ -849,10 +1099,15 @@ export function parseAction(value: unknown): EditorAction | null {
       return {
         clientId: id,
         type,
-        list: typeof item.list === "string" ? variableExpr(item.list) : parseExpression(item.list),
+        list:
+          typeof item.list === "string"
+            ? variableExpr(item.list)
+            : parseExpression(item.list),
         as: asString(item.as) || "local.item",
         actions: Array.isArray(item.actions)
-          ? item.actions.map((a: unknown) => parseAction(a as Record<string, unknown>)).filter(Boolean) as EditorAction[]
+          ? (item.actions
+              .map((a: unknown) => parseAction(a as Record<string, unknown>))
+              .filter(Boolean) as EditorAction[])
           : [],
       };
     case "log":
@@ -865,9 +1120,18 @@ export function parseAction(value: unknown): EditorAction | null {
         text: asString(item.text),
       };
     case "send_media":
-      return { clientId: id, type, text: asString(item.text), image: asString(item.image), file: asString(item.file) };
+      return {
+        clientId: id,
+        type,
+        text: asString(item.text),
+        image: asString(item.image),
+        file: asString(item.file),
+      };
     case "set_variable": {
-      const { value, valueType } = parseSetVariableValue(item.value, item.valueType);
+      const { value, valueType } = parseSetVariableValue(
+        item.value,
+        item.valueType,
+      );
       return {
         clientId: id,
         type,
@@ -924,8 +1188,12 @@ export function parseAction(value: unknown): EditorAction | null {
         clientId: id,
         type,
         condition: parseExpression(item.condition),
-        actions: asArray(item.actions).map(parseAction).filter(Boolean) as EditorAction[],
-        elseActions: asArray(item.elseActions).map(parseAction).filter(Boolean) as EditorAction[],
+        actions: asArray(item.actions)
+          .map(parseAction)
+          .filter(Boolean) as EditorAction[],
+        elseActions: asArray(item.elseActions)
+          .map(parseAction)
+          .filter(Boolean) as EditorAction[],
       };
     case "switch":
       return {
@@ -937,17 +1205,23 @@ export function parseAction(value: unknown): EditorAction | null {
           return {
             clientId: clientId(),
             match: parseExpression(row.match),
-            actions: asArray(row.actions).map(parseAction).filter(Boolean) as EditorAction[],
+            actions: asArray(row.actions)
+              .map(parseAction)
+              .filter(Boolean) as EditorAction[],
           };
         }),
-        defaultActions: asArray(item.defaultActions).map(parseAction).filter(Boolean) as EditorAction[],
+        defaultActions: asArray(item.defaultActions)
+          .map(parseAction)
+          .filter(Boolean) as EditorAction[],
       };
     case "repeat":
       return {
         clientId: id,
         type,
         count: Number.isFinite(Number(item.count)) ? Number(item.count) : 1,
-        actions: asArray(item.actions).map(parseAction).filter(Boolean) as EditorAction[],
+        actions: asArray(item.actions)
+          .map(parseAction)
+          .filter(Boolean) as EditorAction[],
       };
     case "break":
     case "continue":
@@ -965,7 +1239,11 @@ export function parseAction(value: unknown): EditorAction | null {
         })),
       };
     case "return":
-      return { clientId: id, type, value: item.value === undefined ? null : parseExpression(item.value) };
+      return {
+        clientId: id,
+        type,
+        value: item.value === undefined ? null : parseExpression(item.value),
+      };
     default:
       return null;
   }
@@ -1003,7 +1281,10 @@ export function parseUsersField(value: unknown): EditorExpression {
 /** Emit expression JSON; plain variable paths stay readable as strings for older tooling. */
 export function serializeUsersField(expr: EditorExpression): unknown {
   if (expr.type === "variable" && expr.path.trim()) return expr.path.trim();
-  if (expr.type === "literal" && (typeof expr.value === "string" || typeof expr.value === "number")) {
+  if (
+    expr.type === "literal" &&
+    (typeof expr.value === "string" || typeof expr.value === "number")
+  ) {
     return String(expr.value);
   }
   return serializeExpression(expr);
@@ -1028,7 +1309,11 @@ export function parseExpression(value: unknown): EditorExpression {
     };
   }
   if (item.type === "variable") {
-    return { clientId: clientId(), type: "variable", path: rewriteQuotedPath(asString(item.path)) };
+    return {
+      clientId: clientId(),
+      type: "variable",
+      path: rewriteQuotedPath(asString(item.path)),
+    };
   }
   if (item.type === "binary") {
     const op = asString(item.operator) as BinaryOperator;
@@ -1050,25 +1335,44 @@ export function parseExpression(value: unknown): EditorExpression {
     };
   }
   if (item.type === "literal") {
-    return { clientId: clientId(), type: "literal", value: asLiteral(item.value) };
+    return {
+      clientId: clientId(),
+      type: "literal",
+      value: asLiteral(item.value),
+    };
   }
-  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean" || value === null) {
+  if (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    value === null
+  ) {
     return { clientId: clientId(), type: "literal", value };
   }
   return literal("");
 }
 
 /** Strip clientIds; emit backend Expression JSON. */
-export function serializeExpression(expr: EditorExpression): Record<string, unknown> {
+export function serializeExpression(
+  expr: EditorExpression,
+): Record<string, unknown> {
   switch (expr.type) {
     case "literal":
       return { type: "literal", value: expr.value };
     case "variable":
       return { type: "variable", path: expr.path };
     case "call":
-      return { type: "call", callee: expr.callee, args: expr.args.map(serializeExpression) };
+      return {
+        type: "call",
+        callee: expr.callee,
+        args: expr.args.map(serializeExpression),
+      };
     case "member":
-      return { type: "member", object: serializeExpression(expr.object), property: expr.property };
+      return {
+        type: "member",
+        object: serializeExpression(expr.object),
+        property: expr.property,
+      };
     case "binary":
       return {
         type: "binary",
@@ -1092,7 +1396,12 @@ function serializeFunction(fn: EditorFunction) {
     kind: fn.kind,
     exposed: fn.exposed,
     ...(fn.parameters.length
-      ? { parameters: fn.parameters.map((parameter) => ({ name: parameter.name.trim(), type: parameter.type })) }
+      ? {
+          parameters: fn.parameters.map((parameter) => ({
+            name: parameter.name.trim(),
+            type: parameter.type,
+          })),
+        }
       : {}),
     actions: fn.actions.map(serializeAction),
   };
@@ -1100,19 +1409,36 @@ function serializeFunction(fn: EditorFunction) {
 
 function serializeAsset(asset: EditorAsset) {
   if (asset.type === "json") {
-    return { id: asset.id.trim(), name: asset.name.trim(), type: asset.type, data: parseJson(asset.data, {}) };
+    return {
+      id: asset.id.trim(),
+      name: asset.name.trim(),
+      type: asset.type,
+      data: parseJson(asset.data, {}),
+    };
   }
   if (asset.type === "text") {
-    return { id: asset.id.trim(), name: asset.name.trim(), type: asset.type, data: asset.data };
+    return {
+      id: asset.id.trim(),
+      name: asset.name.trim(),
+      type: asset.type,
+      data: asset.data,
+    };
   }
-  return { id: asset.id.trim(), name: asset.name.trim(), type: asset.type, url: asset.url.trim() };
+  return {
+    id: asset.id.trim(),
+    name: asset.name.trim(),
+    type: asset.type,
+    url: asset.url.trim(),
+  };
 }
 
 function serializeVariable(variable: EditorVariable) {
   const group = variable.group.trim();
   const label = variable.label.trim();
   const description = variable.description.trim();
-  const options = variable.options.map((option) => option.trim()).filter(Boolean);
+  const options = variable.options
+    .map((option) => option.trim())
+    .filter(Boolean);
   return {
     name: variable.name.trim(),
     scope: variable.scope,
@@ -1129,7 +1455,10 @@ function serializeVariable(variable: EditorVariable) {
 }
 
 export function variableGroups(variables: EditorVariable[]) {
-  const groups: { label: string; items: { variable: EditorVariable; index: number }[] }[] = [];
+  const groups: {
+    label: string;
+    items: { variable: EditorVariable; index: number }[];
+  }[] = [];
   const seen = new Map<string, number>();
   variables.forEach((variable, index) => {
     const label = variable.group.trim();
@@ -1161,19 +1490,43 @@ function serializeAction(action: EditorAction): Record<string, unknown> {
     case "send_message":
       return { type: action.type, text: action.text };
     case "reply_message":
-      return { type: action.type, text: action.text, ...messageIdField(action.messageId) };
+      return {
+        type: action.type,
+        text: action.text,
+        ...messageIdField(action.messageId),
+      };
     case "react_message":
-      return { type: action.type, emoji: action.emoji, ...messageIdField(action.messageId) };
+      return {
+        type: action.type,
+        emoji: action.emoji,
+        ...messageIdField(action.messageId),
+      };
     case "delete_message":
       return { type: action.type, ...messageIdField(action.messageId) };
     case "kick":
-      return { type: "group_participants", action: "remove", users: serializeUsersField(action.users) };
+      return {
+        type: "group_participants",
+        action: "remove",
+        users: serializeUsersField(action.users),
+      };
     case "add_member":
-      return { type: "group_participants", action: "add", users: serializeUsersField(action.users) };
+      return {
+        type: "group_participants",
+        action: "add",
+        users: serializeUsersField(action.users),
+      };
     case "promote":
-      return { type: "group_participants", action: "promote", users: serializeUsersField(action.users) };
+      return {
+        type: "group_participants",
+        action: "promote",
+        users: serializeUsersField(action.users),
+      };
     case "demote":
-      return { type: "group_participants", action: "demote", users: serializeUsersField(action.users) };
+      return {
+        type: "group_participants",
+        action: "demote",
+        users: serializeUsersField(action.users),
+      };
     case "lock_group":
       return { type: "group_setting", setting: "locked" };
     case "unlock_group":
@@ -1219,13 +1572,18 @@ function serializeAction(action: EditorAction): Record<string, unknown> {
         ...(action.target.trim() ? { target: action.target.trim() } : {}),
       };
     case "wait":
-      return { type: action.type, duration: serializeExpression(action.duration) };
+      return {
+        type: action.type,
+        duration: serializeExpression(action.duration),
+      };
     case "if":
       return {
         type: action.type,
         condition: serializeExpression(action.condition),
         actions: action.actions.map(serializeAction),
-        ...(action.elseActions.length ? { elseActions: action.elseActions.map(serializeAction) } : {}),
+        ...(action.elseActions.length
+          ? { elseActions: action.elseActions.map(serializeAction) }
+          : {}),
       };
     case "switch":
       return {
@@ -1235,10 +1593,16 @@ function serializeAction(action: EditorAction): Record<string, unknown> {
           match: serializeExpression(item.match),
           actions: item.actions.map(serializeAction),
         })),
-        ...(action.defaultActions.length ? { defaultActions: action.defaultActions.map(serializeAction) } : {}),
+        ...(action.defaultActions.length
+          ? { defaultActions: action.defaultActions.map(serializeAction) }
+          : {}),
       };
     case "repeat":
-      return { type: action.type, count: action.count, actions: action.actions.map(serializeAction) };
+      return {
+        type: action.type,
+        count: action.count,
+        actions: action.actions.map(serializeAction),
+      };
     case "break":
     case "continue":
     case "stop_event":
@@ -1324,7 +1688,10 @@ function serializeAction(action: EditorAction): Record<string, unknown> {
               arguments: Object.fromEntries(
                 action.args
                   .filter((arg) => arg.name.trim())
-                  .map((arg) => [arg.name.trim(), serializeExpression(arg.value)]),
+                  .map((arg) => [
+                    arg.name.trim(),
+                    serializeExpression(arg.value),
+                  ]),
               ),
             }
           : {}),
@@ -1336,11 +1703,17 @@ function serializeAction(action: EditorAction): Record<string, unknown> {
   }
 }
 
-
 function isExpressionWire(value: unknown): boolean {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  if (value === null || typeof value !== "object" || Array.isArray(value))
+    return false;
   const t = (value as { type?: unknown }).type;
-  return t === "literal" || t === "variable" || t === "binary" || t === "unary" || t === "call";
+  return (
+    t === "literal" ||
+    t === "variable" ||
+    t === "binary" ||
+    t === "unary" ||
+    t === "call"
+  );
 }
 
 function parseSetVariableValue(
@@ -1358,7 +1731,12 @@ function parseSetVariableValue(
       valueType: vt || (Array.isArray(value) ? "array" : "object"),
     };
   }
-  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean" || value === null) {
+  if (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    value === null
+  ) {
     return { value: literal(value), valueType: vt };
   }
   return { value: literal(""), valueType: vt };
@@ -1372,7 +1750,13 @@ function serializeSetVariableValue(
   expr: EditorExpression,
   valueType: ParameterType | "",
 ): unknown {
-  if (expr.type === "variable" || expr.type === "binary" || expr.type === "unary" || expr.type === "call") {
+  if (
+    expr.type === "variable" ||
+    expr.type === "binary" ||
+    expr.type === "unary" ||
+    expr.type === "call" ||
+    expr.type === "member"
+  ) {
     return serializeExpression(expr);
   }
   // literal
@@ -1419,7 +1803,9 @@ function parseJson(value: string, fallback: unknown) {
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
 }
 
 function asArray(value: unknown) {
@@ -1431,22 +1817,36 @@ function asString(value: unknown) {
 }
 
 function asLiteral(value: unknown): string | number | boolean | null {
-  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean" || value === null) {
+  if (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    value === null
+  ) {
     return value;
   }
   return value == null ? "" : stringifyValue(value);
 }
 
 function asParameterType(value: unknown): ParameterType {
-  return parameterTypes.includes(value as ParameterType) ? (value as ParameterType) : "string";
+  return parameterTypes.includes(value as ParameterType)
+    ? (value as ParameterType)
+    : "string";
 }
 
 function asAssetType(value: unknown): AssetType {
-  return value === "json" || value === "text" || value === "image" || value === "file" ? value : "text";
+  return value === "json" ||
+    value === "text" ||
+    value === "image" ||
+    value === "file"
+    ? value
+    : "text";
 }
 
 function asScope(value: unknown): VariableScope {
-  return variableScopes.includes(value as VariableScope) ? (value as VariableScope) : "chat";
+  return variableScopes.includes(value as VariableScope)
+    ? (value as VariableScope)
+    : "chat";
 }
 
 function stringifyValue(value: unknown) {
